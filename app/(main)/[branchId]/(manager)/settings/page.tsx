@@ -12,6 +12,7 @@ import SettingsIcon from "@/components/icons/SidebarNav/SettingsIcon";
 import { useBluetoothPrinter } from "@/contexts/BluetoothContext";
 import ViewOnlyWrapper from "@/components/ViewOnlyWrapper";
 import { useBranch } from "@/contexts/BranchContext";
+import { branchService } from "@/services/branchService";
 
 export default function SettingsScreen() {
 	const { currentBranch } = useBranch();
@@ -24,6 +25,11 @@ export default function SettingsScreen() {
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSyncing, setIsSyncing] = useState(false);
 	const [syncStatus, setSyncStatus] = useState<"idle" | "success" | "error">("idle");
+	
+	const [managerPin, setManagerPin] = useState("");
+	const [confirmPin, setConfirmPin] = useState("");
+	const [isUpdatingPin, setIsUpdatingPin] = useState(false);
+	const [pinMessage, setPinMessage] = useState({ type: "", text: "" });
 
 	const {
 		bluetoothDevice,
@@ -72,6 +78,38 @@ export default function SettingsScreen() {
 		}
 	};
 
+	const handleUpdatePin = async () => {
+		if (!currentBranch) return;
+		if (managerPin.length < 4) {
+			setPinMessage({ type: "error", text: "PIN must be at least 4 digits." });
+			return;
+		}
+		if (managerPin !== confirmPin) {
+			setPinMessage({ type: "error", text: "PINs do not match." });
+			return;
+		}
+		
+		setIsUpdatingPin(true);
+		try {
+			// Using crypto API for hashing PIN
+			const encoder = new TextEncoder();
+			const data = encoder.encode(managerPin + currentBranch.id);
+			const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+			const hashArray = Array.from(new Uint8Array(hashBuffer));
+			const hashedPin = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+			await branchService.updateBranch(currentBranch.id, { managerPin: hashedPin });
+			setPinMessage({ type: "success", text: "PIN updated successfully!" });
+			setManagerPin("");
+			setConfirmPin("");
+			setTimeout(() => setPinMessage({ type: "", text: "" }), 3000);
+		} catch (error) {
+			setPinMessage({ type: "error", text: "Failed to update PIN." });
+		} finally {
+			setIsUpdatingPin(false);
+		}
+	};
+
 	if (isLoading) return <div className="flex h-full items-center justify-center"><LoadingSpinner /></div>;
 
 	return (
@@ -89,7 +127,7 @@ export default function SettingsScreen() {
 						{/* Preferences */}
 						<div className='bg-white p-6 rounded-2xl shadow-sm border border-[var(--border)]'>
 							<h3 className='text-lg font-bold mb-4'>Display Preferences</h3>
-							<div className='flex items-center justify-between'>
+							<div className='flex items-center justify-between mb-6'>
 								<div>
 									<p className='font-bold text-[var(--secondary)]'>Hide Out-of-Stock</p>
 									<p className='text-xs text-gray-500'>Don't show items with 0 inventory in the menu.</p>
@@ -100,6 +138,42 @@ export default function SettingsScreen() {
 								>
 									<div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${settings.hideOutOfStock ? 'left-7' : 'left-1'}`} />
 								</button>
+							</div>
+							
+							<div className='border-t border-[var(--border)] pt-6 mt-6'>
+								<h3 className='text-lg font-bold mb-4'>Security</h3>
+								<div>
+									<p className='font-bold text-[var(--secondary)] mb-1'>Manager PIN</p>
+									<p className='text-xs text-gray-500 mb-4'>Set a PIN to override actions like voiding orders.</p>
+									<div className='grid grid-cols-2 gap-4 max-w-sm'>
+										<input 
+											type="password" 
+											maxLength={6}
+											placeholder="New PIN (4-6 digits)"
+											value={managerPin}
+											onChange={(e) => setManagerPin(e.target.value.replace(/\D/g, ''))}
+											className="px-4 py-2 text-sm rounded-xl border border-[var(--border)] focus:ring-2 focus:ring-[var(--accent)] outline-none" 
+										/>
+										<input 
+											type="password" 
+											maxLength={6}
+											placeholder="Confirm PIN"
+											value={confirmPin}
+											onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+											className="px-4 py-2 text-sm rounded-xl border border-[var(--border)] focus:ring-2 focus:ring-[var(--accent)] outline-none" 
+										/>
+									</div>
+									{pinMessage.text && (
+										<p className={`text-xs mt-2 font-bold ${pinMessage.type === 'error' ? 'text-red-500' : 'text-green-500'}`}>{pinMessage.text}</p>
+									)}
+									<button 
+										onClick={handleUpdatePin}
+										disabled={isUpdatingPin || !managerPin || !confirmPin}
+										className="mt-4 px-6 py-2 bg-[var(--secondary)] text-white text-sm font-bold rounded-xl disabled:opacity-50 hover:bg-gray-800 transition-colors"
+									>
+										{isUpdatingPin ? 'Updating...' : 'Update PIN'}
+									</button>
+								</div>
 							</div>
 						</div>
 

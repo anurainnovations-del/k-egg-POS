@@ -1,41 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --primary:        #FFFFFF;
-  --secondary:      #3D2B1F;
-  --background:     #FDF6EC;
-  --accent:         #F59E0B;
-  --light-accent:   #FEF3C7;
-  --accent-2:       #EF4444;
-  --foreground:     #3D2B1F;
-  --error:          #DC2626;
-  --success:        #16A34A;
-  --card:           #FFFFFF;
-  --border:         #F3E8D6;
+  --primary: #FFFFFF;
+  --secondary: #3D2B1F;
+  --background: #FDF6EC;
+  --accent: #fad121;
+  --light-accent: #FEF3C7;
+  --accent-2: #EF4444;
+  --foreground: #3D2B1F;
+  --error: #DC2626;
+  --success: #16A34A;
+  --card: #FFFFFF;
+  --border: #F3E8D6;
 }
 
 @theme inline {
-  --color-primary:     var(--primary);
-  --color-secondary:   var(--secondary);
-  --color-background:  var(--background);
-  --color-accent:      var(--accent);
-  --color-foreground:  var(--foreground);
-  --font-poppins:      var(--font-poppins);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-background: var(--background);
+  --color-accent: var(--accent);
+  --color-foreground: var(--foreground);
+  --font-poppins: var(--font-poppins);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary:        #FFFFFF;
-    --secondary:      #3D2B1F;
-    --background:     #FDF6EC;
-    --accent:         #F59E0B;
-    --light-accent:   #FEF3C7;
-    --accent-2:       #EF4444;
-    --foreground:     #3D2B1F;
-    --error:          #DC2626;
-    --success:        #16A34A;
-    --card:           #FFFFFF;
-    --border:         #F3E8D6;
+    --primary: #FFFFFF;
+    --secondary: #3D2B1F;
+    --background: #FDF6EC;
+    --accent: #fad121;
+    --light-accent: #FEF3C7;
+    --accent-2: #EF4444;
+    --foreground: #3D2B1F;
+    --error: #DC2626;
+    --success: #16A34A;
+    --card: #FFFFFF;
+    --border: #F3E8D6;
   }
 }
 
@@ -53,4 +53,42 @@ body {
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+@keyframes ring {
+  0% {
+    transform: rotate(0);
+  }
+
+  5% {
+    transform: rotate(15deg);
+  }
+
+  10% {
+    transform: rotate(-15deg);
+  }
+
+  15% {
+    transform: rotate(12deg);
+  }
+
+  20% {
+    transform: rotate(-12deg);
+  }
+
+  25% {
+    transform: rotate(10deg);
+  }
+
+  30% {
+    transform: rotate(-10deg);
+  }
+
+  35% {
+    transform: rotate(0);
+  }
+
+  100% {
+    transform: rotate(0);
+  }
 }

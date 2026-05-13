@@ -49,7 +49,7 @@ export interface WorkSessionService {
 	) => Promise<string>; // Returns sessionId
 	timeOutWorker: (
 		userId: string,
-		sessionId: string,
+		sessionId?: string,
 		notes?: string
 	) => Promise<void>;
 
@@ -74,6 +74,9 @@ export interface WorkSessionService {
 		startDate: Date,
 		endDate: Date
 	) => Promise<WorkSession[]>;
+	getAllWorkSessions: (
+		dateRange?: DateRange
+	) => Promise<(WorkSession & { id: string })[]>;
 }
 
 export const workSessionService: WorkSessionService = {
@@ -224,10 +227,10 @@ export const workSessionService: WorkSessionService = {
 	): Promise<(WorkSession & { id: string }) | null> => {
 		try {
 			const workSessionsRef = collection(db, "workSessions");
+			// Query for the most recent session for this user
 			const q = query(
 				workSessionsRef,
 				where("userId", "==", userId),
-				where("timeOutAt", "==", null),
 				orderBy("timeInAt", "desc"),
 				limit(1)
 			);
@@ -240,6 +243,11 @@ export const workSessionService: WorkSessionService = {
 
 			const docSnapshot = querySnapshot.docs[0];
 			const data = docSnapshot.data();
+
+			// If the most recent session already has a timeOutAt, then there is no active session
+			if (data.timeOutAt) {
+				return null;
+			}
 
 			return {
 				id: docSnapshot.id,
@@ -337,6 +345,7 @@ export const workSessionService: WorkSessionService = {
 			querySnapshot.forEach((doc) => {
 				const data = doc.data();
 				sessions.push({
+					id: doc.id,
 					userId: data.userId,
 					branchId: data.branchId,
 					timeInAt: data.timeInAt,
@@ -346,10 +355,10 @@ export const workSessionService: WorkSessionService = {
 					duration: data.duration || undefined,
 					notes: data.notes || undefined,
 					sessionType: data.sessionType,
-				});
+				} as WorkSession & { id: string });
 			});
 
-			return sessions;
+			return sessions as (WorkSession & { id: string })[];
 		} catch (error) {
 			console.error("Error getting branch work sessions:", error);
 			throw error;
@@ -367,6 +376,52 @@ export const workSessionService: WorkSessionService = {
 		}
 
 		return Math.floor((timeOutAt.seconds - timeInAt.seconds) / 60); // Duration in minutes
+	},
+
+	getAllWorkSessions: async (
+		dateRange?: DateRange
+	): Promise<(WorkSession & { id: string })[]> => {
+		try {
+			const workSessionsRef = collection(db, "workSessions");
+
+			let q = query(
+				workSessionsRef,
+				orderBy("timeInAt", "desc")
+			);
+
+			if (dateRange) {
+				q = query(
+					workSessionsRef,
+					where("timeInAt", ">=", dateRange.startDate),
+					where("timeInAt", "<=", dateRange.endDate),
+					orderBy("timeInAt", "desc")
+				);
+			}
+
+			const querySnapshot = await getDocs(q);
+			const sessions: (WorkSession & { id: string })[] = [];
+
+			querySnapshot.forEach((doc) => {
+				const data = doc.data();
+				sessions.push({
+					id: doc.id,
+					userId: data.userId,
+					branchId: data.branchId,
+					timeInAt: data.timeInAt,
+					timeOutAt: data.timeOutAt || undefined,
+					clockedInBy: data.clockedInBy,
+					clockedOutBy: data.clockedOutBy || undefined,
+					duration: data.duration || undefined,
+					notes: data.notes || undefined,
+					sessionType: data.sessionType,
+				} as WorkSession & { id: string });
+			});
+
+			return sessions;
+		} catch (error) {
+			console.error("Error getting all work sessions:", error);
+			throw error;
+		}
 	},
 
 	getSessionsByDateRange: async (
@@ -397,6 +452,7 @@ export const workSessionService: WorkSessionService = {
 				clockedInBy: userId, // In a real scenario, this would be the manager's ID
 				notes: notes || "",
 				sessionType: "scheduled",
+				timeOutAt: null as any, // Explicitly set to null to help with queries
 			};
 
 			const sessionId = await workSessionService.createWorkSession(sessionData);
@@ -419,14 +475,33 @@ export const workSessionService: WorkSessionService = {
 
 	timeOutWorker: async (
 		userId: string,
-		sessionId: string,
+		sessionId?: string,
 		notes?: string
 	): Promise<void> => {
 		try {
+			let actualSessionId = sessionId;
+
+			// If sessionId is missing or seems to be a userId (fallback), try to find the active session
+			if (!actualSessionId || actualSessionId === userId) {
+				const activeSession = await workSessionService.getActiveWorkSession(userId);
+				if (!activeSession) {
+					// If still no active session but user is trying to clock out, 
+					// we should at least update their status to clocked_out
+					const userDocRef = doc(db, "users", userId);
+					await updateDoc(userDocRef, {
+						currentStatus: "clocked_out",
+						lastTimeOut: Timestamp.now(),
+						updatedAt: Timestamp.now(),
+					});
+					return;
+				}
+				actualSessionId = activeSession.id;
+			}
+
 			const timeOutAt = Timestamp.now();
 
 			// Get the existing session to calculate duration
-			const session = await workSessionService.getWorkSession(sessionId);
+			const session = await workSessionService.getWorkSession(actualSessionId as string);
 			if (!session) {
 				throw new Error("Work session not found");
 			}
@@ -437,7 +512,7 @@ export const workSessionService: WorkSessionService = {
 			);
 
 			// Update work session with time out data
-			await workSessionService.updateWorkSession(sessionId, {
+			await workSessionService.updateWorkSession(actualSessionId as string, {
 				timeOutAt,
 				clockedOutBy: userId, // In a real scenario, this would be the manager's ID
 				duration,

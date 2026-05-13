@@ -64,6 +64,175 @@ export default function AdvancedReporting({ workers }: AdvancedReportingProps) {
 	const [error, setError] = useState<string | null>(null);
 	const { allBranches } = useAccessibleBranches();
 
+	const getBranchName = useCallback((branchId: string): string => {
+		const branch = allBranches.find((b) => b.id === branchId);
+		return branch ? branch.name : branchId;
+	}, [allBranches]);
+
+	const calculateBranchCoverage = useCallback((sessions: (WorkSession & { workerId: string; workerName: string })[]) => {
+		const branchMap = new Map();
+
+		sessions.forEach((session) => {
+			if (!branchMap.has(session.branchId)) {
+				branchMap.set(session.branchId, {
+					branchId: session.branchId,
+					branchName: getBranchName(session.branchId),
+					workerIds: new Set(),
+					totalHours: 0,
+					sessionsCount: 0,
+				});
+			}
+
+			const branch = branchMap.get(session.branchId);
+			branch.workerIds.add(session.workerId);
+			branch.sessionsCount++;
+
+			if (session.duration) {
+				branch.totalHours += session.duration / 60;
+			}
+		});
+
+		return Array.from(branchMap.values()).map((branch) => ({
+			branchId: branch.branchId,
+			branchName: branch.branchName,
+			workerCount: branch.workerIds.size,
+			totalHours: branch.totalHours,
+			averageHours:
+				branch.workerIds.size > 0
+					? branch.totalHours / branch.workerIds.size
+					: 0,
+		}));
+	}, [getBranchName]);
+
+	const calculateTopPerformers = useCallback((workersList: Worker[], sessions: (WorkSession & { workerId: string; workerName: string })[]) => {
+		const workerMap = new Map();
+
+		// Initialize worker data
+		workersList.forEach((worker) => {
+			workerMap.set(worker.id, {
+				workerId: worker.id,
+				workerName: worker.name,
+				totalHours: 0,
+				sessionsCount: 0,
+				onTimeSessions: 0,
+			});
+		});
+
+		// Aggregate session data
+		sessions.forEach((session) => {
+			const workerData = workerMap.get(session.workerId);
+			if (workerData) {
+				workerData.sessionsCount++;
+
+				if (session.duration) {
+					workerData.totalHours += session.duration / 60;
+				}
+
+				// Simple punctuality check (on-time if clocked in within 15 minutes of hour)
+				if (session.timeInAt) {
+					const startTime = session.timeInAt instanceof Timestamp
+						? session.timeInAt.toDate()
+						: session.timeInAt;
+					const minutes = startTime.getMinutes();
+					if (minutes <= 15 || minutes >= 45) {
+						workerData.onTimeSessions++;
+					}
+				}
+			}
+		});
+
+		return Array.from(workerMap.values())
+			.map((worker) => ({
+				...worker,
+				punctualityScore:
+					worker.sessionsCount > 0
+						? Math.round((worker.onTimeSessions / worker.sessionsCount) * 100)
+						: 0,
+			}))
+			.filter((worker) => worker.sessionsCount > 0)
+			.sort((a, b) => b.totalHours - a.totalHours)
+			.slice(0, 5);
+	}, []);
+
+	const calculateTimeDistribution = useCallback((sessions: (WorkSession & { workerId: string; workerName: string })[]) => {
+		const hourlyData = Array.from({ length: 24 }, (_, hour) => ({
+			hour,
+			clockInsCount: 0,
+			clockOutsCount: 0,
+		}));
+
+		sessions.forEach((session) => {
+			if (session.timeInAt) {
+				const startTime = session.timeInAt instanceof Timestamp
+					? session.timeInAt.toDate()
+					: session.timeInAt;
+				hourlyData[startTime.getHours()].clockInsCount++;
+			}
+
+			if (session.timeOutAt) {
+				const endTime = session.timeOutAt instanceof Timestamp
+					? session.timeOutAt.toDate()
+					: session.timeOutAt;
+				hourlyData[endTime.getHours()].clockOutsCount++;
+			}
+		});
+
+		return hourlyData;
+	}, []);
+
+	const calculateSummaryMetrics = useCallback((
+		workersList: Worker[],
+		sessions: (WorkSession & { workerId: string; workerName: string })[]
+	): SummaryMetrics => {
+		const totalWorkers = workersList.length;
+
+		// Calculate total hours
+		const totalHours = sessions.reduce((sum, session) => {
+			if (session.duration) {
+				return sum + session.duration / 60; // Convert minutes to hours
+			}
+			if (session.timeInAt && session.timeOutAt) {
+				const startTime = session.timeInAt instanceof Timestamp 
+					? session.timeInAt.toDate()
+					: session.timeInAt;
+				const endTime = session.timeOutAt instanceof Timestamp
+					? session.timeOutAt.toDate()
+					: session.timeOutAt;
+				return (
+					sum + (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)
+				);
+			}
+			return sum;
+		}, 0);
+
+		// Active workers (workers with sessions in date range)
+		const activeWorkerIds = new Set(sessions.map((s) => s.workerId));
+		const activeWorkers = activeWorkerIds.size;
+
+		// Average hours per worker
+		const averageHoursPerWorker =
+			totalWorkers > 0 ? totalHours / totalWorkers : 0;
+
+		// Branch coverage
+		const branchCoverage = calculateBranchCoverage(sessions);
+
+		// Top performers
+		const topPerformers = calculateTopPerformers(workersList, sessions);
+
+		// Time distribution (hourly clock-ins/outs)
+		const timeDistribution = calculateTimeDistribution(sessions);
+
+		return {
+			totalWorkers,
+			totalHours,
+			averageHoursPerWorker,
+			activeWorkers,
+			branchCoverage,
+			topPerformers,
+			timeDistribution,
+		};
+	}, [calculateBranchCoverage, calculateTopPerformers, calculateTimeDistribution]);
+
 	const generateSummaryReport = useCallback(async () => {
 		try {
 			setLoading(true);
@@ -117,182 +286,13 @@ export default function AdvancedReporting({ workers }: AdvancedReportingProps) {
 		} finally {
 			setLoading(false);
 		}
-	}, [filters, workers, allBranches]);
+	}, [filters, workers, calculateSummaryMetrics]);
 
 	useEffect(() => {
 		if (filters.reportType === "summary") {
 			generateSummaryReport();
 		}
 	}, [filters, generateSummaryReport]);
-
-	const calculateSummaryMetrics = useCallback((
-		workers: Worker[],
-		sessions: (WorkSession & { workerId: string; workerName: string })[]
-	): SummaryMetrics => {
-		const totalWorkers = workers.length;
-
-		// Calculate total hours
-		const totalHours = sessions.reduce((sum, session) => {
-			if (session.duration) {
-				return sum + session.duration / 60; // Convert minutes to hours
-			}
-			if (session.timeInAt && session.timeOutAt) {
-				const startTime = session.timeInAt instanceof Timestamp 
-					? session.timeInAt.toDate()
-					: session.timeInAt;
-				const endTime = session.timeOutAt instanceof Timestamp
-					? session.timeOutAt.toDate()
-					: session.timeOutAt;
-				return (
-					sum + (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)
-				);
-			}
-			return sum;
-		}, 0);
-
-		// Active workers (workers with sessions in date range)
-		const activeWorkerIds = new Set(sessions.map((s) => s.workerId));
-		const activeWorkers = activeWorkerIds.size;
-
-		// Average hours per worker
-		const averageHoursPerWorker =
-			totalWorkers > 0 ? totalHours / totalWorkers : 0;
-
-		// Branch coverage
-		const branchCoverage = calculateBranchCoverage(sessions);
-
-		// Top performers
-		const topPerformers = calculateTopPerformers(workers, sessions);
-
-		// Time distribution (hourly clock-ins/outs)
-		const timeDistribution = calculateTimeDistribution(sessions);
-
-		return {
-			totalWorkers,
-			totalHours,
-			averageHoursPerWorker,
-			activeWorkers,
-			branchCoverage,
-			topPerformers,
-			timeDistribution,
-		};
-	}, [allBranches]);
-
-	const calculateBranchCoverage = (sessions: (WorkSession & { workerId: string; workerName: string })[]) => {
-		const branchMap = new Map();
-
-		sessions.forEach((session) => {
-			if (!branchMap.has(session.branchId)) {
-				branchMap.set(session.branchId, {
-					branchId: session.branchId,
-					branchName: getBranchName(session.branchId),
-					workerIds: new Set(),
-					totalHours: 0,
-					sessionsCount: 0,
-				});
-			}
-
-			const branch = branchMap.get(session.branchId);
-			branch.workerIds.add(session.workerId);
-			branch.sessionsCount++;
-
-			if (session.duration) {
-				branch.totalHours += session.duration / 60;
-			}
-		});
-
-		return Array.from(branchMap.values()).map((branch) => ({
-			branchId: branch.branchId,
-			branchName: branch.branchName,
-			workerCount: branch.workerIds.size,
-			totalHours: branch.totalHours,
-			averageHours:
-				branch.workerIds.size > 0
-					? branch.totalHours / branch.workerIds.size
-					: 0,
-		}));
-	};
-
-	const calculateTopPerformers = (workers: Worker[], sessions: (WorkSession & { workerId: string; workerName: string })[]) => {
-		const workerMap = new Map();
-
-		// Initialize worker data
-		workers.forEach((worker) => {
-			workerMap.set(worker.id, {
-				workerId: worker.id,
-				workerName: worker.name,
-				totalHours: 0,
-				sessionsCount: 0,
-				onTimeSessions: 0,
-			});
-		});
-
-		// Aggregate session data
-		sessions.forEach((session) => {
-			const workerData = workerMap.get(session.workerId);
-			if (workerData) {
-				workerData.sessionsCount++;
-
-				if (session.duration) {
-					workerData.totalHours += session.duration / 60;
-				}
-
-				// Simple punctuality check (on-time if clocked in within 15 minutes of hour)
-				if (session.timeInAt) {
-					const startTime = session.timeInAt instanceof Timestamp
-						? session.timeInAt.toDate()
-						: session.timeInAt;
-					const minutes = startTime.getMinutes();
-					if (minutes <= 15 || minutes >= 45) {
-						workerData.onTimeSessions++;
-					}
-				}
-			}
-		});
-
-		return Array.from(workerMap.values())
-			.map((worker) => ({
-				...worker,
-				punctualityScore:
-					worker.sessionsCount > 0
-						? Math.round((worker.onTimeSessions / worker.sessionsCount) * 100)
-						: 0,
-			}))
-			.filter((worker) => worker.sessionsCount > 0)
-			.sort((a, b) => b.totalHours - a.totalHours)
-			.slice(0, 5);
-	};
-
-	const calculateTimeDistribution = (sessions: (WorkSession & { workerId: string; workerName: string })[]) => {
-		const hourlyData = Array.from({ length: 24 }, (_, hour) => ({
-			hour,
-			clockInsCount: 0,
-			clockOutsCount: 0,
-		}));
-
-		sessions.forEach((session) => {
-			if (session.timeInAt) {
-				const startTime = session.timeInAt instanceof Timestamp
-					? session.timeInAt.toDate()
-					: session.timeInAt;
-				hourlyData[startTime.getHours()].clockInsCount++;
-			}
-
-			if (session.timeOutAt) {
-				const endTime = session.timeOutAt instanceof Timestamp
-					? session.timeOutAt.toDate()
-					: session.timeOutAt;
-				hourlyData[endTime.getHours()].clockOutsCount++;
-			}
-		});
-
-		return hourlyData;
-	};
-
-	const getBranchName = (branchId: string): string => {
-		const branch = allBranches.find((b) => b.id === branchId);
-		return branch ? branch.name : branchId;
-	};
 
 	const formatHours = (hours: number): string => {
 		const wholeHours = Math.floor(hours);
@@ -327,8 +327,6 @@ export default function AdvancedReporting({ workers }: AdvancedReportingProps) {
 				: [...prev.branchIds, branchId],
 		}));
 	};
-
-
 
 	const exportReport = () => {
 		if (!summaryMetrics) return;

@@ -4,6 +4,8 @@ import DrawerProvider from "@/components/DrawerProvider";
 import AuthGuard from "@/components/AuthGuard";
 import { BluetoothProvider } from "@/contexts/BluetoothContext";
 import { BranchProvider } from "@/contexts/BranchContext";
+import { RealtimeDataProvider } from "@/contexts/RealtimeDataContext";
+import { StockAlertProvider } from "@/contexts/StockAlertContext";
 import { useParams } from "next/navigation";
 
 interface MainLayoutProps {
@@ -18,13 +20,17 @@ export default function MainLayout({ children }: MainLayoutProps) {
 		<AuthGuard>
 			<BluetoothProvider>
 				<BranchProvider initialBranchId={branchId}>
-					<DrawerProvider>
-						<div className='flex flex-col h-full overflow-hidden'>
-							<main className='flex-1 overflow-auto bg-[var(--background)]'>
-								{children}
-							</main>
-						</div>
-					</DrawerProvider>
+					<RealtimeDataProvider branchId={branchId}>
+						<StockAlertProvider>
+							<DrawerProvider>
+								<div className='flex flex-col h-full overflow-hidden'>
+									<main className='flex-1 overflow-auto bg-[var(--background)]'>
+										{children}
+									</main>
+								</div>
+							</DrawerProvider>
+						</StockAlertProvider>
+					</RealtimeDataProvider>
 				</BranchProvider>
 			</BluetoothProvider>
 		</AuthGuard>

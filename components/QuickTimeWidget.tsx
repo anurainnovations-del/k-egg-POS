@@ -1,231 +1,150 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTimeTracking } from "@/contexts/TimeTrackingContext";
+import { useBranch } from "@/contexts/BranchContext";
+import ClockIcon from "@/components/icons/ClockIcon";
 
 interface QuickTimeWidgetProps {
 	currentBranchId?: string;
 	className?: string;
-	compact?: boolean; // For TopBar usage
+	compact?: boolean;
 }
 
 export default function QuickTimeWidget({
-	currentBranchId,
 	className = "",
 	compact = false,
 }: QuickTimeWidgetProps) {
-	const { user } = useAuth();
-	const timeTracking = useTimeTracking({ autoRefresh: true });
-	const [loading, setLoading] = useState(false);
-	const [currentTime, setCurrentTime] = useState(new Date());
+	const {
+		isWorking,
+		workingDuration,
+		clockIn,
+		clockOut,
+		loading,
+		worker,
+	} = useTimeTracking({ autoRefresh: true });
+	const { currentBranch } = useBranch();
+	const [time, setTime] = useState(new Date());
 
 	useEffect(() => {
-		// Update current time every second
-		const timer = setInterval(() => {
-			setCurrentTime(new Date());
-		}, 1000);
-
+		const timer = setInterval(() => setTime(new Date()), 1000);
 		return () => clearInterval(timer);
 	}, []);
 
-	const handleQuickToggle = async () => {
-		if (!user || !timeTracking.worker || loading) return;
-
-		setLoading(true);
+	const handleAction = async () => {
+		if (loading) return;
 
 		try {
-			const branchId =
-				currentBranchId || timeTracking.worker.roleAssignments[0]?.branchId;
-
-			if (!branchId) {
-				throw new Error("No branch selected for time tracking");
-			}
-
-			if (!timeTracking.isWorking) {
-				await timeTracking.clockIn(branchId, "Quick clock-in from POS");
+			if (isWorking) {
+				await clockOut("Clock-out from QuickWidget");
 			} else {
-				await timeTracking.clockOut("Quick clock-out from POS");
+				if (currentBranch?.id) {
+					await clockIn(currentBranch.id, "Clock-in from QuickWidget");
+				} else {
+					alert("Please select a branch first");
+				}
 			}
-		} catch (err: any) {
-			console.error("Error toggling time status:", err);
-		} finally {
-			setLoading(false);
+		} catch (error: unknown) {
+			console.error("Time tracking error:", error);
+			const message = error instanceof Error ? error.message : "Time tracking failed";
+			alert(message);
 		}
 	};
 
-	const formatWorkingTime = (): string => {
-		if (!timeTracking.currentSession || timeTracking.workingDuration === 0)
-			return "0m";
-
-		const hours = Math.floor(timeTracking.workingDuration / 60);
-		const minutes = timeTracking.workingDuration % 60;
-
-		if (hours > 0) {
-			return `${hours}h ${minutes}m`;
-		}
-		return `${minutes}m`;
+	const formatDuration = (mins: number) => {
+		const hours = Math.floor(mins / 60);
+		const m = mins % 60;
+		return `${hours}h ${m}m`;
 	};
 
-	// Don't show for users without time tracking access
-	// (admins without manager role assignments are exempt)
-	const isExemptAdmin =
-		timeTracking.worker?.isAdmin &&
-		!timeTracking.worker.roleAssignments.some(
-			(assignment) => assignment.role === "manager"
-		);
+	if (!worker || worker.isAdmin) return null;
 
-	if (!user || !timeTracking.worker || isExemptAdmin) {
-		return null;
-	}
-
-	const isWorking = timeTracking.isWorking;
-
-	// Compact version for TopBar
 	if (compact) {
 		return (
-			<div className={`flex items-center space-x-2 ${className}`}>
-				{/* Status Indicator with Time */}
-				<div className='flex items-center space-x-1.5 bg-white/10 backdrop-blur-sm rounded-lg px-2 py-1'>
-					<div
-						className={`w-2 h-2 rounded-full ${
-							isWorking ? "bg-[var(--success)] animate-pulse" : "bg-gray-300"
-						}`}></div>
-					<span className='text-xs font-medium -text[var(--secondary)]'>
-						{isWorking ? formatWorkingTime() : "Off"}
-					</span>
-				</div>
-
-				{/* Compact Toggle Button */}
-				<button
-					onClick={handleQuickToggle}
-					disabled={loading || timeTracking.loading}
-					className={`flex items-center space-x-1 px-2 py-1 rounded-lg -text[var(--secondary)] transition-colors text-xs font-medium ${
-						isWorking
-							? "bg-orange-500/20 hover:bg-orange-500/30"
-							: "bg-green-500/20 hover:bg-green-500/30"
-					} ${
-						loading || timeTracking.loading
-							? "opacity-50 cursor-not-allowed"
-							: ""
-					}`}
-					title={isWorking ? "Clock Out" : "Clock In"}>
-					{loading || timeTracking.loading ? (
-						<>
-							<div className='animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent'></div>
-							<span>{isWorking ? "Clocking Out..." : "Clocking In..."}</span>
-						</>
-					) : (
-						<>
-							<svg
-								className='w-3 h-3'
-								fill='none'
-								stroke='currentColor'
-								viewBox='0 0 24 24'>
-								<path
-									strokeLinecap='round'
-									strokeLinejoin='round'
-									strokeWidth={2}
-									d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
-								/>
-							</svg>
-							<span>{isWorking ? "Clock Out" : "Clock In"}</span>
-						</>
-					)}
-				</button>
-			</div>
+			<button
+				onClick={handleAction}
+				disabled={loading}
+				className={`flex items-center gap-3 px-4 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-50 border ${
+					isWorking 
+						? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" 
+						: "bg-[var(--accent)] text-[var(--secondary)] border-transparent hover:shadow-md"
+				} ${className}`}
+			>
+				{loading ? (
+					<div className="w-4 h-4 border-2 border-current border-t-transparent animate-spin rounded-full" />
+				) : (
+					<>
+						<ClockIcon className="w-4 h-4" />
+						<div className="flex flex-col items-start leading-tight">
+							<span className="text-xs font-black uppercase">
+								{isWorking ? "CLOCK OUT" : "CLOCK IN"}
+							</span>
+							{isWorking && (
+								<span className="text-[10px] opacity-70 font-bold">
+									{formatDuration(workingDuration)}
+								</span>
+							)}
+						</div>
+					</>
+				)}
+			</button>
 		);
 	}
 
-	// Regular version for other contexts
 	return (
-		<div
-			className={`bg-white border border-gray-200 rounded-lg shadow-sm ${className}`}>
-			<div className='p-3'>
-				{/* Status Indicator */}
-				<div className='flex items-center justify-between mb-3'>
-					<div className='flex items-center space-x-2'>
-						<div
-							className={`w-2 h-2 rounded-full ${
-								isWorking ? "bg-green-400 animate-pulse" : "bg-gray-300"
-							}`}></div>
-						<span className='text-sm font-medium text-gray-700'>
-							{isWorking ? "Working" : "Not Working"}
-						</span>
+		<div className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6 ${className}`}>
+			<div className="flex flex-col md:flex-row items-center justify-between gap-6">
+				<div className="flex items-center gap-4">
+					<div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors duration-500 ${
+						isWorking ? "bg-green-100 text-green-600" : "bg-blue-100 text-blue-600"
+					}`}>
+						<ClockIcon className="w-8 h-8" />
 					</div>
-					<div className='text-xs text-gray-500 font-mono'>
-						{currentTime.toLocaleTimeString([], {
-							hour: "2-digit",
-							minute: "2-digit",
-						})}
+					<div>
+						<h3 className="text-xl font-black text-[var(--secondary)]">
+							{isWorking ? "On Duty" : "Off Duty"}
+						</h3>
+						<p className="text-sm text-gray-500 font-medium">
+							{currentBranch?.name || "No branch selected"}
+						</p>
 					</div>
 				</div>
 
-				{/* Working Time Display */}
-				{isWorking && (
-					<div className='mb-3'>
-						<div className='text-xs text-gray-500 mb-1'>Working for:</div>
-						<div className='text-lg font-semibold text-blue-600'>
-							{formatWorkingTime()}
-						</div>
+				<div className="flex flex-col items-center md:items-end">
+					<div className="text-3xl font-black text-[var(--secondary)] tabular-nums">
+						{time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
 					</div>
-				)}
+					<div className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">
+						Current Local Time
+					</div>
+				</div>
 
-				{/* Quick Toggle Button */}
-				<button
-					onClick={handleQuickToggle}
-					disabled={loading || timeTracking.loading}
-					className={`w-full flex items-center justify-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-						isWorking
-							? "bg-orange-100 hover:bg-orange-200 text-orange-700"
-							: "bg-green-100 hover:bg-green-200 text-green-700"
-					} ${
-						loading || timeTracking.loading
-							? "opacity-50 cursor-not-allowed"
-							: ""
-					}`}>
-					{loading || timeTracking.loading ? (
-						<div className='flex items-center'>
-							<div className='animate-spin rounded-full h-3 w-3 border-2 border-current border-t-transparent mr-2'></div>
-							{isWorking ? "Clocking out..." : "Clocking in..."}
+				<div className="flex items-center gap-4 w-full md:w-auto">
+					{isWorking && (
+						<div className="flex-1 md:flex-none text-center md:text-right px-6 py-2 bg-gray-50 rounded-xl border border-gray-100">
+							<div className="text-xs text-gray-400 font-bold uppercase tracking-wider">Session Time</div>
+							<div className="text-lg font-black text-[var(--secondary)]">
+								{formatDuration(workingDuration)}
+							</div>
 						</div>
-					) : (
-						<>
-							{isWorking ? (
-								<>
-									<svg
-										className='w-4 h-4 mr-1.5'
-										fill='none'
-										stroke='currentColor'
-										viewBox='0 0 24 24'>
-										<path
-											strokeLinecap='round'
-											strokeLinejoin='round'
-											strokeWidth={2}
-											d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
-										/>
-									</svg>
-									Clock Out
-								</>
-							) : (
-								<>
-									<svg
-										className='w-4 h-4 mr-1.5'
-										fill='none'
-										stroke='currentColor'
-										viewBox='0 0 24 24'>
-										<path
-											strokeLinecap='round'
-											strokeLinejoin='round'
-											strokeWidth={2}
-											d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
-										/>
-									</svg>
-									Clock In
-								</>
-							)}
-						</>
 					)}
-				</button>
+					
+					<button
+						onClick={handleAction}
+						disabled={loading}
+						className={`flex-1 md:flex-none px-8 py-4 rounded-2xl font-black text-sm shadow-md transition-all active:scale-95 disabled:opacity-50 ${
+							isWorking 
+								? "bg-orange-100 text-orange-600 hover:bg-orange-200" 
+								: "bg-[var(--accent)] text-[var(--secondary)] hover:shadow-lg"
+						}`}
+					>
+						{loading ? (
+							<div className="w-5 h-5 border-2 border-current border-t-transparent animate-spin rounded-full mx-auto" />
+						) : (
+							isWorking ? "CLOCK OUT" : "CLOCK IN"
+						)}
+					</button>
+				</div>
 			</div>
 		</div>
 	);
 }
+

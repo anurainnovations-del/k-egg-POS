@@ -14,6 +14,7 @@ import EditWorkerModal from "./components/EditWorkerModal";
 import DeleteWorkerModal from "./components/DeleteWorkerModal";
 import TimeInOutModal from "./components/TimeInOutModal";
 import AssignBranchModal from "./components/AssignBranchModal";
+import AttendanceTable from "./components/AttendanceTable";
 import WorkerDetailModal from "@/components/WorkerDetailModal";
 import PlusIcon from "@/components/icons/PlusIcon";
 import AdvancedReporting from "./components/AdvancedReporting";
@@ -59,7 +60,7 @@ export default function WorkersPage() {
 	>("time_in");
 
 	// View mode
-	const [viewMode] = useState<"workers" | "analytics" | "schedule">("workers");
+	const [viewMode, setViewMode] = useState<"workers" | "analytics" | "schedule" | "attendance">("workers");
 
 	// Filters
 	const [filters, setFilters] = useState<WorkerFiltersType>({});
@@ -199,9 +200,10 @@ export default function WorkersPage() {
 
 	// Cleanup subscriptions on unmount
 	useEffect(() => {
+		const currentSubs = workerSubscriptions.current;
 		return () => {
-			workerSubscriptions.current.forEach((unsubscribe) => unsubscribe());
-			workerSubscriptions.current.clear();
+			currentSubs.forEach((unsubscribe) => unsubscribe());
+			currentSubs.clear();
 		};
 	}, []);
 
@@ -429,8 +431,8 @@ export default function WorkersPage() {
 							</div>
 						)}
 
-						{/* View Toggle : FOR NOW DISABLE */}
-						{/* <div className='flex bg-gray-100 rounded-lg p-1'>
+						{/* View Toggle */}
+						<div className='flex bg-gray-100 rounded-lg p-1'>
 							<button
 								onClick={() => setViewMode("workers")}
 								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
@@ -459,7 +461,16 @@ export default function WorkersPage() {
 								}`}>
 								Schedule
 							</button>
-						</div> */}
+							<button
+								onClick={() => setViewMode("attendance")}
+								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+									viewMode === "attendance"
+										? "bg-white text-gray-900 shadow-sm"
+										: "text-gray-600 hover:text-gray-900"
+								}`}>
+								Attendance
+							</button>
+						</div>
 
 						{/* Add Worker Button - only show in workers view */}
 						{viewMode === "workers" && (
@@ -539,6 +550,13 @@ export default function WorkersPage() {
 				) : viewMode === "analytics" ? (
 					/* Analytics View */
 					<AdvancedReporting workers={workers} />
+				) : viewMode === "attendance" ? (
+					<AttendanceTable 
+						branchId={selectedBranchId} 
+						workers={workers} 
+						branches={branches}
+						loading={loading}
+					/>
 				) : (
 					/* Schedule Management View */
 					<WorkScheduleManagement workers={workers} />

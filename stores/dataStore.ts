@@ -345,6 +345,7 @@ class DataStore {
 								created_at: data.created_at || Timestamp.now(),
 								modified_at: data.modified_at || Timestamp.now(),
 								created_by: data.created_by || "",
+								branchId: data.branchId || branchId,
 							});
 						}
 					});

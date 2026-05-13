@@ -1,6 +1,6 @@
 import { collection, doc, setDoc, getDocs, query, orderBy, where, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { IngredientDeduction, calculateDeductions, applyIngredientDeductions, CartItem } from './ingredientDeductionService';
+import { IngredientDeduction, calculateDeductions, applyIngredientDeductions, applyIngredientAdditions, CartItem } from './ingredientDeductionService';
 import { MenuItem } from './menuItemService';
 
 export interface OrderItem {
@@ -32,6 +32,9 @@ export interface Order {
   workerName: string;
   workerUid: string;
   branchId: string;
+  status?: 'COMPLETED' | 'VOIDED';
+  voidedAt?: Timestamp;
+  voidedBy?: string;
 }
 
 export const createOrder = async (
@@ -95,6 +98,7 @@ export const createOrder = async (
       itemCount: orderItems.reduce((s, i) => s + i.quantity, 0),
       uniqueItemCount: orderItems.length,
       branchId,
+      status: 'COMPLETED',
     };
 
     // Save order
@@ -181,4 +185,45 @@ export const getTopSellingItems = (orders: Order[], limit = 10) => {
     .map(([id, stats]) => ({ id, ...stats }))
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, limit);
+};
+
+export const voidOrder = async (
+  branchId: string,
+  orderId: string,
+  voidedByWorkerName: string
+): Promise<void> => {
+  try {
+    const orderRef = doc(db, 'orders', orderId);
+    
+    // Reverse the ingredient deductions
+    // First, we need to get the order details to know what to reverse
+    const q = query(collection(db, 'orders'), where('id', '==', orderId), where('branchId', '==', branchId));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      throw new Error('Order not found');
+    }
+    
+    const orderDoc = snapshot.docs[0];
+    const orderToVoid = orderDoc.data() as Order;
+    
+    if (orderToVoid.status === 'VOIDED') {
+      throw new Error('Order is already voided');
+    }
+
+    if (orderToVoid.ingredientDeductions && orderToVoid.ingredientDeductions.length > 0) {
+      await applyIngredientAdditions(branchId, orderToVoid.ingredientDeductions);
+    }
+    
+    // Update the order status
+    await setDoc(orderDoc.ref, {
+      status: 'VOIDED',
+      voidedAt: Timestamp.fromDate(new Date()),
+      voidedBy: voidedByWorkerName
+    }, { merge: true });
+    
+  } catch (error) {
+    console.error('Error voiding order:', error);
+    throw new Error('Failed to void order');
+  }
 };

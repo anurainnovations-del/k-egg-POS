@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Ingredient, ingredientService } from "@/services/ingredientService";
-import { subscribeToIngredients, subscribeToCategories } from "@/stores/dataStore";
+import { useRealtimeData } from "@/contexts/RealtimeDataContext";
 import { Category } from "@/services/categoryService";
 import { useBranch } from "@/contexts/BranchContext";
 import { restockService } from "@/services/restockService";
@@ -14,6 +14,8 @@ import PlusIcon from "@/components/icons/PlusIcon";
 import ImageUpload from "@/components/ImageUpload";
 import { MEDIA_BUCKETS } from "@/lib/firebaseStorage";
 import { AnimatePresence, motion } from "motion/react";
+import { useAuth } from "@/contexts/AuthContext";
+import CategoryManagementModal from "@/components/CategoryManagementModal";
 
 // ─── Modals ───────────────────────────────────────────────────────────────────
 
@@ -207,35 +209,17 @@ function RestockModal({
 
 export default function ManagerIngredientsPage() {
   const { currentBranch } = useBranch();
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isClient, setIsClient] = useState(false);
+  const { user } = useAuth();
+  const { ingredients, categories, loading: realtimeLoading } = useRealtimeData();
+  const loading = realtimeLoading.ingredients || realtimeLoading.categories;
   
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("");
   
   const [modalOpen, setModalOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [selectedIng, setSelectedIng] = useState<Ingredient | null>(null);
   const [restockOpen, setRestockOpen] = useState(false);
-
-  useEffect(() => { setIsClient(true); }, []);
-
-  useEffect(() => {
-    if (!isClient || !currentBranch) return;
-    setLoading(true);
-    const unsub = subscribeToIngredients(currentBranch.id, (items) => {
-      setIngredients(items);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, [isClient, currentBranch]);
-
-  useEffect(() => {
-    if (!isClient) return;
-    const unsub = subscribeToCategories(setCategories);
-    return () => unsub();
-  }, [isClient]);
 
   const ingCategories = categories.filter(c => c.type === 'ingredient');
   const getCatName = (id: string) => categories.find(c => c.id === id)?.name ?? "—";
@@ -248,11 +232,13 @@ export default function ManagerIngredientsPage() {
 
   const handleSave = async (data: Partial<Ingredient>) => {
     if (!currentBranch) return;
+    const performer = user ? { id: user.uid, name: user.displayName || user.email || "Unknown" } : undefined;
+    
     if (selectedIng) {
-      await ingredientService.updateIngredient(currentBranch.id, selectedIng.id!, data);
+      await ingredientService.updateIngredient(currentBranch.id, selectedIng.id!, data, performer);
     } else {
-      const { id, branchId, createdAt, updatedAt, ...ingData } = data as any;
-      await ingredientService.addIngredient(currentBranch.id, ingData);
+      const { id: _id, branchId: _branchId, createdAt: _createdAt, updatedAt: _updatedAt, ...ingData } = data as any;
+      await ingredientService.addIngredient(currentBranch.id, ingData, performer);
     }
   };
 
@@ -262,8 +248,11 @@ export default function ManagerIngredientsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!currentBranch) return;
+    const performer = user ? { id: user.uid, name: user.displayName || user.email || "Unknown" } : undefined;
+
     if (confirm("Are you sure you want to delete this ingredient? This cannot be undone.")) {
-      await ingredientService.deleteIngredient(id);
+      await ingredientService.deleteIngredient(id, currentBranch.id, performer);
     }
   };
 
@@ -286,12 +275,20 @@ export default function ManagerIngredientsPage() {
               {ingCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <button 
-            onClick={() => { setSelectedIng(null); setModalOpen(true); }}
-            className="bg-[var(--accent)] text-[var(--secondary)] px-5 py-2 rounded-xl font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <PlusIcon className="w-4 h-4" /> ADD INGREDIENT
-          </button>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setCategoriesOpen(true)}
+              className="bg-white border border-[var(--border)] text-[var(--secondary)]/70 px-4 py-2 rounded-xl font-bold text-xs shadow-sm hover:bg-gray-50 active:scale-95 transition-all flex items-center gap-2"
+            >
+              CATEGORIES
+            </button>
+            <button 
+              onClick={() => { setSelectedIng(null); setModalOpen(true); }}
+              className="bg-[var(--accent)] text-[var(--secondary)] px-5 py-2 rounded-xl font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <PlusIcon className="w-4 h-4" /> ADD INGREDIENT
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -345,6 +342,7 @@ export default function ManagerIngredientsPage() {
 
       <IngredientModal isOpen={modalOpen} onClose={() => setModalOpen(false)} ingredient={selectedIng} categories={ingCategories} onSave={handleSave} />
       {selectedIng && <RestockModal isOpen={restockOpen} onClose={() => setRestockOpen(false)} ingredient={selectedIng} onRestock={handleRestock} />}
+      <CategoryManagementModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)} type="ingredient" />
     </div>
   );
 }

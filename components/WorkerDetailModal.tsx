@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Worker } from "@/services/workerService";
 import { workSessionService, WorkSession } from "@/services/workSessionService";
 
@@ -30,13 +30,7 @@ export default function WorkerDetailModal({
 	const [loading, setLoading] = useState(false);
 	const [activeTab, setActiveTab] = useState<"details" | "sessions">("details");
 
-	useEffect(() => {
-		if (isOpen && worker) {
-			loadWorkerSessions();
-		}
-	}, [isOpen, worker]);
-
-	const loadWorkerSessions = async () => {
+	const loadWorkerSessions = useCallback(async () => {
 		if (!worker) return;
 
 		try {
@@ -71,7 +65,13 @@ export default function WorkerDetailModal({
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [worker]);
+
+	useEffect(() => {
+		if (isOpen && worker) {
+			loadWorkerSessions();
+		}
+	}, [isOpen, worker, loadWorkerSessions]);
 
 	const formatDate = (date: any) => {
 		if (!date) return "N/A";

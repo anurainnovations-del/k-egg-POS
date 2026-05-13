@@ -10,6 +10,11 @@ import MobileTopBar from "@/components/MobileTopBar";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import IngredientsIcon from "@/components/icons/SidebarNav/IngredientsIcon";
 import { formatCurrency } from "@/lib/currency_formatter";
+import ManagerOverrideModal from "@/components/ManagerOverrideModal";
+import { useRealtimeData } from "@/contexts/RealtimeDataContext";
+import { ingredientService } from "@/services/ingredientService";
+import { useAuth } from "@/contexts/AuthContext";
+import { AnimatePresence, motion } from "motion/react";
 
 function StockBadge({ stock, threshold }: { stock: number; threshold: number }) {
   if (stock === 0) return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">Out</span>;
@@ -19,31 +24,19 @@ function StockBadge({ stock, threshold }: { stock: number; threshold: number }) 
 
 export default function IngredientsViewPage() {
   const { currentBranch } = useBranch();
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isClient, setIsClient] = useState(false);
+  const { ingredients, categories, loading: realtimeLoading } = useRealtimeData();
+  const loading = realtimeLoading.ingredients || realtimeLoading.categories;
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("");
 
-  useEffect(() => { setIsClient(true); }, []);
+  const [restockItem, setRestockItem] = useState<Ingredient | null>(null);
+  const [restockAmount, setRestockAmount] = useState<number | "">("");
+  const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isClient || !currentBranch) return;
-    setLoading(true);
-    const unsub = subscribeToIngredients(currentBranch.id, (items) => {
-      setIngredients(items);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, [isClient, currentBranch]);
 
-  useEffect(() => {
-    if (!isClient) return;
-    const unsub = subscribeToCategories(setCategories);
-    return () => unsub();
-  }, [isClient]);
-
+  const { user } = useAuth();
+  
   const ingCategories = categories.filter((c) => c.type === "ingredient");
   const getCatName = (id: string) => categories.find((c) => c.id === id)?.name ?? "—";
 
@@ -55,6 +48,37 @@ export default function IngredientsViewPage() {
 
   const lowCount = ingredients.filter((i) => i.stock > 0 && i.stock <= i.lowStockThreshold).length;
   const outCount = ingredients.filter((i) => i.stock === 0).length;
+
+  const handleRestockClick = (item: Ingredient) => {
+    setRestockItem(item);
+    setRestockAmount("");
+    setIsRestockModalOpen(true);
+  };
+
+  const handleRestockSubmit = () => {
+    if (!restockAmount || Number(restockAmount) <= 0) return;
+    setIsRestockModalOpen(false);
+    setIsOverrideModalOpen(true);
+  };
+
+  const executeRestock = async () => {
+    if (!currentBranch || !restockItem || !restockAmount) return;
+    
+    try {
+      const performer = user ? { id: user.uid, name: user.displayName || user.email || "Unknown" } : undefined;
+      
+      await ingredientService.updateIngredient(currentBranch.id, restockItem.id!, {
+        stock: restockItem.stock + Number(restockAmount)
+      }, performer);
+
+      setRestockItem(null);
+      setRestockAmount("");
+      setIsOverrideModalOpen(false);
+    } catch (error) {
+      console.error("Failed to restock:", error);
+      // We could add a toast error here
+    }
+  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -116,6 +140,7 @@ export default function IngredientsViewPage() {
                   <th className="text-right px-4 py-3 font-semibold text-[var(--secondary)]/70">Stock</th>
                   <th className="text-right px-4 py-3 font-semibold text-[var(--secondary)]/70">Unit</th>
                   <th className="text-center px-4 py-3 font-semibold text-[var(--secondary)]/70">Status</th>
+                  <th className="text-center px-4 py-3 font-semibold text-[var(--secondary)]/70">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
@@ -128,6 +153,14 @@ export default function IngredientsViewPage() {
                     <td className="px-4 py-3 text-center">
                       <StockBadge stock={ing.stock} threshold={ing.lowStockThreshold} />
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleRestockClick(ing)}
+                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--secondary)] hover:brightness-110 transition-colors shadow-sm"
+                      >
+                        Restock
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -135,6 +168,72 @@ export default function IngredientsViewPage() {
           </div>
         )}
       </div>
+
+      {/* Restock Amount Modal */}
+      <AnimatePresence>
+        {isRestockModalOpen && restockItem && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+            onClick={() => setIsRestockModalOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-bold text-[var(--secondary)] mb-2">Restock {restockItem.name}</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Current stock: <span className="font-bold">{restockItem.stock}</span> {restockItem.unit}
+              </p>
+              
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-[var(--secondary)]/60 uppercase mb-2">Amount to Add</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="number" 
+                    min="1"
+                    placeholder="0"
+                    value={restockAmount}
+                    onChange={(e) => setRestockAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="flex-1 px-4 py-3 text-lg font-bold rounded-xl border-2 border-[var(--border)] focus:border-[var(--accent)] outline-none" 
+                  />
+                  <span className="font-bold text-[var(--secondary)]">{restockItem.unit}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setIsRestockModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl border border-[var(--border)] font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleRestockSubmit}
+                  disabled={!restockAmount || Number(restockAmount) <= 0}
+                  className="flex-1 py-3 rounded-xl bg-[var(--accent)] text-[var(--secondary)] font-bold hover:brightness-110 transition-colors disabled:opacity-50"
+                >
+                  Continue
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ManagerOverrideModal 
+        isOpen={isOverrideModalOpen}
+        onClose={() => {
+          setIsOverrideModalOpen(false);
+        }}
+        onSuccess={executeRestock}
+        actionName={`Restock ${restockItem?.name} by ${restockAmount} ${restockItem?.unit}`}
+      />
     </div>
   );
 }

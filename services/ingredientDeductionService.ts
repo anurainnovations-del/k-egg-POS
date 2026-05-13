@@ -1,5 +1,5 @@
 import { MenuItem } from './menuItemService';
-import { bulkDeductIngredientStock } from './ingredientService';
+import { bulkDeductIngredientStock, bulkAddIngredientStock } from './ingredientService';
 
 export interface IngredientDeduction {
   ingredientId: string;
@@ -61,4 +61,19 @@ export const applyIngredientDeductions = async (
     amount: d.quantityUsed,
   }));
   await bulkDeductIngredientStock(branchId, updates);
+};
+
+/**
+ * Reverses ingredient deductions in Firestore.
+ * Called when an order is voided.
+ */
+export const applyIngredientAdditions = async (
+  branchId: string,
+  deductions: IngredientDeduction[]
+): Promise<void> => {
+  const updates = deductions.map((d) => ({
+    id: d.ingredientId,
+    amount: d.quantityUsed,
+  }));
+  await bulkAddIngredientStock(branchId, updates);
 };

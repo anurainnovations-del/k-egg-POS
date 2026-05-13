@@ -9,10 +9,10 @@ import LogoutIcon from "./icons/SidebarNav/LogoutIcon";
 import DiscountsIcon from "./icons/SidebarNav/DiscountsIcon";
 import BranchesIcon from "./icons/SidebarNav/BranchesIcon";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useState } from "react";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import ManagementIcon from "./icons/SidebarNav/ManagementIcon";
 import UsersIcon from "./icons/SidebarNav/UsersIcon";
 
@@ -31,18 +31,24 @@ export default function SidebarNav() {
 	const router = useRouter();
 	const pathname = usePathname();
 
+	const params = useParams();
+	const branchIdFromUrl = typeof params.branchId === "string" ? params.branchId : null;
+
 	const isManagerForCurrentBranch = currentBranch
 		? getUserRoleForBranch(currentBranch.id) === "manager"
 		: false;
 
-	const shouldShowWorkerSection = !isUserAdmin() || currentBranch;
+	// Determine if we should show branch sections based on currentBranch OR if we are in a branch route
+	const isInBranchRoute = !!branchIdFromUrl;
+	const shouldShowWorkerSection = !isUserAdmin() || currentBranch || isInBranchRoute;
 	const shouldShowManagerSection =
 		(!isUserAdmin() && (isManagerForCurrentBranch || isUserAdmin())) ||
-		(isUserAdmin() && currentBranch);
+		(isUserAdmin() && (currentBranch || isInBranchRoute));
 
-	// Worker section — Store + Ingredients (view-only)
+	// Worker section — Store + Ingredients (view-only) + Orders (with override)
 	const workerNavItems: NavItem[] = [
 		{ href: "store", label: "Store", icon: StoreIcon },
+		{ href: "orders", label: "Orders", icon: SalesIcon },
 		{ href: "ingredients", label: "Ingredients", icon: IngredientsIcon },
 	];
 
@@ -64,13 +70,15 @@ export default function SidebarNav() {
 	];
 
 	const getBranchAwareHref = (page: string) => {
-		if (!currentBranch) return `/${page}`;
-		return `/${currentBranch.id}/${page}`;
+		const bId = currentBranch?.id || branchIdFromUrl;
+		if (!bId) return "#"; // Prevent broken links like /store
+		return `/${bId}/${page}`;
 	};
 
 	const isRouteActive = (page: string) => {
-		if (!currentBranch) return false;
-		return pathname === `/${currentBranch.id}/${page}`;
+		const bId = currentBranch?.id || branchIdFromUrl;
+		if (!bId) return false;
+		return pathname === `/${bId}/${page}`;
 	};
 
 	const isAdminRouteActive = (page: string) => pathname === page;
@@ -79,16 +87,20 @@ export default function SidebarNav() {
 		const IconComponent = item.icon;
 		const isActive = isAdminItem ? isAdminRouteActive(item.href) : isRouteActive(item.href);
 		const href = isAdminItem ? item.href : getBranchAwareHref(item.href);
-
+		const isDisabled = !isAdminItem && href === "#";
+		
 		return (
 			<li key={item.href}>
 				<Link
 					href={href}
-					className={`flex h-10 items-center text-[14px] font-semibold ${
+					onClick={(e) => {
+						if (isDisabled) e.preventDefault();
+					}}
+					className={`flex h-10 items-center text-[14px] font-semibold transition-all ${
 						isActive
 							? "bg-[var(--accent)] hover:bg-[var(--accent)]/80 text-[var(--primary)] text-shadow-lg"
 							: "bg-[var(--primary)] hover:bg-[var(--accent)]/50 text-[var(--secondary)]"
-					}`}>
+					} ${isDisabled ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}`}>
 					<div className='w-full flex items-center justify-start'>
 						<IconComponent
 							className={`w-8 h-8 mx-3 gap-3 ${
@@ -119,8 +131,8 @@ export default function SidebarNav() {
 		<div className='h-full w-[271px] bg-[var(--primary)] border-r border-[var(--border)] shadow-xl xl:shadow-none duration-400'>
 			<div className='flex flex-col h-full'>
 				{/* Logo */}
-				<div className='flex items-center justify-center border-b border-[var(--border)] bg-[var(--accent)] h-[90px] px-6'>
-					<HorizontalLogo className='w-auto opacity-100 transition-all' />
+				<div className='flex items-center justify-center border-b border-[var(--border)] bg-[var(--accent)] h-[140px] px-8 py-4'>
+					<HorizontalLogo className='w-full h-full opacity-100 transition-all' />
 				</div>
 
 				{/* Back to Admin */}

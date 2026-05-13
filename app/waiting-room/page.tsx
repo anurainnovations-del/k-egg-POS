@@ -111,7 +111,7 @@ export default function WaitingRoomPage() {
 
             {/* Title */}
             <h1 className="text-2xl font-bold text-[var(--secondary)] mb-4">
-              Welcome to FoodMood POS!
+              Welcome to K-egg POS!
             </h1>
 
             {/* Status Message */}
@@ -210,7 +210,7 @@ export default function WaitingRoomPage() {
             {/* Footer */}
             <div className="mt-6">
               <p className="text-xs text-[var(--secondary)] opacity-50">
-                FoodMood Point-of-Sales System v1.0
+                K-egg Point-of-Sales System v1.0
               </p>
             </div>
           </div>

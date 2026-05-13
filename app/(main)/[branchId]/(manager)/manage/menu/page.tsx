@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { MenuItem, menuItemService } from "@/services/menuItemService";
 import { Ingredient } from "@/services/ingredientService";
-import { subscribeToMenuItems, subscribeToIngredients, subscribeToCategories } from "@/stores/dataStore";
+import { useRealtimeData } from "@/contexts/RealtimeDataContext";
 import { Category } from "@/services/categoryService";
 import { useBranch } from "@/contexts/BranchContext";
 import TopBar from "@/components/TopBar";
@@ -16,6 +16,7 @@ import ImageUpload from "@/components/ImageUpload";
 import { MEDIA_BUCKETS } from "@/lib/firebaseStorage";
 import { formatCurrency } from "@/lib/currency_formatter";
 import { AnimatePresence, motion } from "motion/react";
+import CategoryManagementModal from "@/components/CategoryManagementModal";
 
 // ─── Recipe Builder Section ───────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ function RecipeBuilder({
 
       {/* Add Row */}
       <div className="flex gap-2 pt-2 border-t border-gray-200">
-        <select value={selectedIngId} onChange={e => setSelectedIngId(e.target.value)} className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white">
+        <select value={selectedIngId} onChange={e => setSelectedIngId(e.target.value)} className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white">
           <option value="">Select Ingredient...</option>
           {ingredients.map(i => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
         </select>
@@ -146,7 +147,7 @@ function MenuModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={{ duration: 0.2 }}
-            className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl flex flex-col md:flex-row gap-6"
+            className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl flex flex-col md:flex-row gap-6 max-h-[90vh] overflow-y-auto md:overflow-visible"
             onClick={(e) => e.stopPropagation()}
           >
         {/* Left Side: General Info */}
@@ -229,40 +230,14 @@ function MenuModal({
 
 export default function ManagerMenuPage() {
   const { currentBranch } = useBranch();
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isClient, setIsClient] = useState(false);
+  const { menuItems, ingredients, categories, loading: realtimeLoading } = useRealtimeData();
+  const loading = realtimeLoading.menu || realtimeLoading.categories;
   
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-
-  useEffect(() => { setIsClient(true); }, []);
-
-  useEffect(() => {
-    if (!isClient || !currentBranch) return;
-    setLoading(true);
-    const unsub = subscribeToMenuItems(currentBranch.id, (items) => {
-      setMenuItems(items);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, [isClient, currentBranch]);
-
-  useEffect(() => {
-    if (!isClient || !currentBranch) return;
-    const unsub = subscribeToIngredients(currentBranch.id, setIngredients);
-    return () => unsub();
-  }, [isClient, currentBranch]);
-
-  useEffect(() => {
-    if (!isClient) return;
-    const unsub = subscribeToCategories(setCategories);
-    return () => unsub();
-  }, [isClient]);
 
   const menuCategories = categories.filter(c => c.type === 'menu');
   const getCatName = (id: string) => categories.find(c => c.id === id)?.name ?? "—";
@@ -278,7 +253,7 @@ export default function ManagerMenuPage() {
     if (selectedItem) {
       await menuItemService.updateMenuItem(currentBranch.id, selectedItem.id!, data);
     } else {
-      const { id, branchId, createdAt, updatedAt, ...itemData } = data as any;
+      const { id: _id, branchId: _branchId, createdAt: _createdAt, updatedAt: _updatedAt, ...itemData } = data as any;
       await menuItemService.addMenuItem(currentBranch.id, itemData);
     }
   };
@@ -308,12 +283,20 @@ export default function ManagerMenuPage() {
               {menuCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <button 
-            onClick={() => { setSelectedItem(null); setModalOpen(true); }}
-            className="bg-[var(--accent)] text-[var(--secondary)] px-5 py-2 rounded-xl font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <PlusIcon className="w-4 h-4" /> ADD MENU ITEM
-          </button>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setCategoriesOpen(true)}
+              className="bg-white border border-[var(--border)] text-[var(--secondary)]/70 px-4 py-2 rounded-xl font-bold text-xs shadow-sm hover:bg-gray-50 active:scale-95 transition-all flex items-center gap-2"
+            >
+              CATEGORIES
+            </button>
+            <button 
+              onClick={() => { setSelectedItem(null); setModalOpen(true); }}
+              className="bg-[var(--accent)] text-[var(--secondary)] px-5 py-2 rounded-xl font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <PlusIcon className="w-4 h-4" /> ADD MENU ITEM
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -365,6 +348,7 @@ export default function ManagerMenuPage() {
         allIngredients={ingredients} 
         onSave={handleSave} 
       />
+      <CategoryManagementModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)} type="menu" />
     </div>
   );
 }

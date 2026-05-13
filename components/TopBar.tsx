@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useTimeTracking } from "@/contexts/TimeTrackingContext";
 import { useBranch } from "@/contexts/BranchContext";
 import MenuBurgerIcon from "@/components/icons/MenuBurger";
+import StockAlertBell from "@/components/StockAlertBell";
 
 
 interface TopBarProps {
@@ -85,6 +86,8 @@ export default function TopBar({
 						className='ml-6 my-[17px] h-14 w-14 min-w-14 bg-[var(--primary)] rounded-xl flex justify-center items-center hover:scale-105 hover:shadow-md transition-all cursor-pointer flex-shrink-0'>
 						<MenuBurgerIcon className="text-[var(--secondary)]" />
 					</button>
+
+					<StockAlertBell />
 
 					{/* User Info*/}
 					<div className='relative group'>

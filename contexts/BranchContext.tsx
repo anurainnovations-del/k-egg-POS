@@ -16,6 +16,7 @@ import {
 	getBranchAccessSummary,
 	BranchAccessSummary,
 } from "@/utils/branchAccess";
+import { subscribeToBranches, subscribeToWorker } from "@/stores/dataStore";
 
 interface BranchContextType {
 	// Current branch management
@@ -116,7 +117,7 @@ export function BranchProvider({
 	}, [currentWorker, allBranches]);
 
 	// Load branches based on user role
-	const loadBranches = async () => {
+	useEffect(() => {
 		if (!user) {
 			setAvailableBranches([]);
 			setCurrentBranch(null);
@@ -124,97 +125,51 @@ export function BranchProvider({
 			return;
 		}
 
-		try {
-			setLoading(true);
-			setError(null);
+		let unsubBranches: (() => void) | null = null;
+		let unsubWorker: (() => void) | null = null;
 
-			// Load all branches and current worker in parallel
-			const [branchesResult, workerResult] = await Promise.allSettled([
-				branchService.getAllBranches(),
-				workerService.getWorker(user.uid),
-			]);
+		setLoading(true);
 
-			// Handle branches result
-			let branches: Branch[] = [];
-			if (branchesResult.status === "fulfilled") {
-				setAllBranches(branchesResult.value || []);
-				branches = branchesResult.value || [];
-			} else {
-				console.error("Failed to load branches:", branchesResult.reason);
-				setAllBranches([]);
-			}
-
-			// Handle worker result
-			if (workerResult.status === "fulfilled") {
-				setCurrentWorker(workerResult.value);
-			} else {
-				console.error("Failed to load worker data:", workerResult.reason);
-				setCurrentWorker(null);
-			}
-
-			console.log("🔍 BranchContext Debug:", {
-				userId: user.uid,
-				isAdmin: isUserAdmin(),
-				roleAssignments: user.roleAssignments,
-				roleAssignmentsLength: user.roleAssignments?.length || 0,
-			});
-
-			// Filter branches for available branches (backwards compatibility)
-			let availableBranches: Branch[];
+		// Subscribe to global branches store
+		unsubBranches = subscribeToBranches((branches) => {
+			setAllBranches(branches);
+			
+			// If we are admin, available = all
 			if (isUserAdmin()) {
-				// Admin can see all branches
-				console.log("👑 Loading all branches for admin");
-				availableBranches = branches;
-			} else {
-				// Regular users can only see their assigned branches
-				const userRoleAssignments = user.roleAssignments.map((assignment) => ({
-					branchId: assignment.branchId,
-					role: assignment.role,
-				}));
-				console.log("👤 Loading user branches:", userRoleAssignments);
-				availableBranches = await branchService.getUserBranches(
-					userRoleAssignments
-				);
-				console.log("✅ User branches loaded:", availableBranches);
+				setAvailableBranches(branches);
+			} else if (user) {
+				// Regular users: filter by role assignments
+				const userBranchIds = user.roleAssignments.map(ra => ra.branchId);
+				setAvailableBranches(branches.filter(b => userBranchIds.includes(b.id)));
 			}
+		});
 
-			setAvailableBranches(availableBranches);
-			console.log(
-				"🏢 Final available branches set:",
-				availableBranches.length,
-				"branches:",
-				availableBranches.map((b) => ({ id: b.id, name: b.name }))
-			);
-
-			// Set current branch
-			if (
-				initialBranchId &&
-				availableBranches.find((b) => b.id === initialBranchId)
-			) {
-				// Use the branch from URL if valid
-				const branch = availableBranches.find((b) => b.id === initialBranchId);
-				setCurrentBranch(branch || null);
-			} else if (availableBranches.length > 0 && !isUserAdmin()) {
-				// For non-admins: Default to first available branch
-				// For admins: Don't auto-select a branch, let them choose from branch management
-				setCurrentBranch(availableBranches[0]);
-			} else {
-				setCurrentBranch(null);
-			}
-		} catch (err) {
-			console.error("Error loading branches:", err);
-			setError("Failed to load branches");
-			setAvailableBranches([]);
-			setCurrentBranch(null);
-		} finally {
+		// Subscribe to current worker data
+		unsubWorker = subscribeToWorker(user.uid, (worker) => {
+			setCurrentWorker(worker);
 			setLoading(false);
-		}
-	};
+		});
 
-	// Load branches when user changes or component mounts
+		return () => {
+			if (unsubBranches) unsubBranches();
+			if (unsubWorker) unsubWorker();
+		};
+	}, [user]);
+
+	// Set current branch whenever availableBranches or initialBranchId changes
 	useEffect(() => {
-		loadBranches();
-	}, [user, initialBranchId]);
+		if (loading || availableBranches.length === 0) return;
+
+		if (initialBranchId) {
+			const branch = availableBranches.find(b => b.id === initialBranchId);
+			if (branch) {
+				setCurrentBranch(branch);
+			}
+		} else if (!currentBranch && !isUserAdmin()) {
+			// Auto-select first branch for non-admins if none selected
+			setCurrentBranch(availableBranches[0]);
+		}
+	}, [availableBranches, initialBranchId, loading]);
 
 	// Function to set current branch by ID
 	const setCurrentBranchId = (branchId: string) => {
@@ -231,9 +186,12 @@ export function BranchProvider({
 		setCurrentBranch(null);
 	};
 
-	// Function to refresh branches
+	// Function to refresh branches (now just re-subscribes if needed)
 	const refreshBranches = async () => {
-		await loadBranches();
+		// DataStore handles realtime updates, but we can reset loading state if desired
+		setLoading(true);
+		// wait a bit to simulate refresh feel
+		setTimeout(() => setLoading(false), 500);
 	};
 
 	// Function to check if user can access a specific branch

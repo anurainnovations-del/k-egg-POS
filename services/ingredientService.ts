@@ -12,6 +12,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
+import { auditService } from './auditService';
 
 export interface Ingredient {
   id?: string;
@@ -27,11 +28,17 @@ export interface Ingredient {
   updatedAt?: Timestamp;
 }
 
+export interface Performer {
+  id: string;
+  name: string;
+}
+
 const COLLECTION_NAME = 'ingredients';
 
 export const createIngredient = async (
   branchId: string,
-  ingredient: Omit<Ingredient, 'id' | 'branchId' | 'createdAt' | 'updatedAt'>
+  ingredient: Omit<Ingredient, 'id' | 'branchId' | 'createdAt' | 'updatedAt'>,
+  performer?: Performer
 ): Promise<string> => {
   try {
     const data = {
@@ -41,6 +48,19 @@ export const createIngredient = async (
       updatedAt: Timestamp.now(),
     };
     const docRef = await addDoc(collection(db, COLLECTION_NAME), data);
+    
+    if (performer) {
+      await auditService.logAction({
+        branchId,
+        userId: performer.id,
+        userName: performer.name,
+        action: "ENTITY_CREATE",
+        entityType: "ingredient",
+        entityId: docRef.id,
+        details: { after: data, message: `Created ingredient: ${ingredient.name}` }
+      });
+    }
+
     return docRef.id;
   } catch (error) {
     console.error('Error creating ingredient:', error);
@@ -85,20 +105,63 @@ export const subscribeToIngredientItems = (
 export const updateIngredient = async (
   branchId: string,
   id: string,
-  updates: Partial<Omit<Ingredient, 'id' | 'createdAt'>>
+  updates: Partial<Omit<Ingredient, 'id' | 'createdAt'>>,
+  performer?: Performer
 ): Promise<void> => {
   try {
     const ref = doc(db, COLLECTION_NAME, id);
-    await updateDoc(ref, { ...updates, branchId, updatedAt: Timestamp.now() });
+    
+    if (performer) {
+      // Fetch before state for logging
+      const current = await getDocs(query(collection(db, COLLECTION_NAME), where('__name__', '==', id)));
+      const beforeData = current.docs[0]?.data();
+      
+      await updateDoc(ref, { ...updates, branchId, updatedAt: Timestamp.now() });
+
+      await auditService.logAction({
+        branchId,
+        userId: performer.id,
+        userName: performer.name,
+        action: updates.stock !== undefined ? "STOCK_ADJUSTMENT" : "STOCK_UPDATE",
+        entityType: "ingredient",
+        entityId: id,
+        details: { 
+          before: beforeData, 
+          after: updates,
+          message: updates.stock !== undefined 
+            ? `Adjusted stock for ${beforeData?.name || 'ingredient'} to ${updates.stock}`
+            : `Updated ingredient: ${beforeData?.name || 'ingredient'}`
+        }
+      });
+    } else {
+      await updateDoc(ref, { ...updates, branchId, updatedAt: Timestamp.now() });
+    }
   } catch (error) {
     console.error('Error updating ingredient:', error);
     throw new Error('Failed to update ingredient');
   }
 };
 
-export const deleteIngredient = async (id: string): Promise<void> => {
+export const deleteIngredient = async (id: string, branchId: string, performer?: Performer): Promise<void> => {
   try {
-    await deleteDoc(doc(db, COLLECTION_NAME, id));
+    if (performer) {
+      const current = await getDocs(query(collection(db, COLLECTION_NAME), where('__name__', '==', id)));
+      const beforeData = current.docs[0]?.data();
+
+      await deleteDoc(doc(db, COLLECTION_NAME, id));
+
+      await auditService.logAction({
+        branchId,
+        userId: performer.id,
+        userName: performer.name,
+        action: "ENTITY_DELETE",
+        entityType: "ingredient",
+        entityId: id,
+        details: { before: beforeData, message: `Deleted ingredient: ${beforeData?.name}` }
+      });
+    } else {
+      await deleteDoc(doc(db, COLLECTION_NAME, id));
+    }
   } catch (error) {
     console.error('Error deleting ingredient:', error);
     throw new Error('Failed to delete ingredient');
@@ -113,8 +176,7 @@ export const getLowStockIngredients = async (
 };
 
 /**
- * Bulk deduct ingredient quantities by absolute amounts (negative = reduce).
- * Used internally after order placement.
+ * Bulk deduct ingredient stock (internal POS use)
  */
 export const bulkDeductIngredientStock = async (
   branchId: string,
@@ -127,11 +189,31 @@ export const bulkDeductIngredientStock = async (
     const ingredient = map.get(id);
     if (!ingredient) return Promise.resolve();
     const newStock = Math.max(0, ingredient.stock - amount);
+    // Note: Internal deductions don't typically need a performer log per item
+    // but we could log the order completion as a whole.
     return updateIngredient(branchId, id, { stock: newStock });
   });
 
   await Promise.all(updates);
 };
+
+export const bulkAddIngredientStock = async (
+  branchId: string,
+  additions: { id: string; amount: number }[]
+): Promise<void> => {
+  const current = await getIngredients(branchId);
+  const map = new Map(current.map((i) => [i.id!, i]));
+
+  const updates = additions.map(({ id, amount }) => {
+    const ingredient = map.get(id);
+    if (!ingredient) return Promise.resolve();
+    const newStock = ingredient.stock + amount;
+    return updateIngredient(branchId, id, { stock: newStock });
+  });
+
+  await Promise.all(updates);
+};
+
 export const ingredientService = {
   createIngredient,
   addIngredient: createIngredient, // alias
@@ -141,4 +223,6 @@ export const ingredientService = {
   deleteIngredient,
   getLowStockIngredients,
   bulkDeductIngredientStock,
+  bulkAddIngredientStock,
 };
+

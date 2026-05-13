@@ -166,7 +166,7 @@ export async function formatReceiptESC(
 export async function formatReceiptWithLogo(
 	order: ReceiptOrderData
 ): Promise<Uint8Array> {
-	const logoUrl = "/escpos_image.png"; // Your pre-processed logo for ESC/POS
+	const logoUrl = "/K Egg Logo_Korean.png"; // Your pre-processed logo for ESC/POS
 	return await formatReceiptESC(order, logoUrl);
 }
 

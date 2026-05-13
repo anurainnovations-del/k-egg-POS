@@ -227,7 +227,7 @@ export function TimeTrackingProvider({
 			if (!state.worker) {
 				throw new Error("Unable to clock out - no worker data");
 			}
-			if (!state.currentSession) {
+			if (!state.currentSession && !state.isWorking) {
 				throw new Error("Unable to clock out - no active session");
 			}
 			try {
@@ -235,7 +235,7 @@ export function TimeTrackingProvider({
 
 				await workSessionService.timeOutWorker(
 					user.uid,
-					state.currentSession.id || user.uid,
+					state.currentSession?.id,
 					notes || `Clock-out via POS at ${new Date().toLocaleString()}`
 				);
 

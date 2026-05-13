@@ -21,6 +21,7 @@ import DeleteWorkerModal from "@/app/(main)/admin/users/components/DeleteWorkerM
 import TimeInOutModal from "@/app/(main)/admin/users/components/TimeInOutModal";
 import AssignBranchModal from "@/app/(main)/admin/users/components/AssignBranchModal";
 import WorkerDetailModal from "@/components/WorkerDetailModal";
+import AttendanceTable from "@/app/(main)/admin/users/components/AttendanceTable";
 import PlusIcon from "@/components/icons/PlusIcon";
 import { useParams } from "next/navigation";
 import TopBar from "@/components/TopBar";
@@ -31,7 +32,6 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 export default function ManagementPage() {
 	const {
 		user,
-		getUserRoleForBranch,
 		canAccessBranch,
 		loading: authLoading,
 	} = useAuth();
@@ -88,7 +88,8 @@ export default function ManagementPage() {
 				const branchWorkers: Worker[] = [];
 				snapshot.forEach((doc) => {
 					const data = doc.data();
-					const hasBranchAccess = data.roleAssignments?.some((a: any) => a.branchId === branchId && a.isActive);
+					const roleAssignments = data.roleAssignments as { branchId: string; isActive: boolean }[] | undefined;
+					const hasBranchAccess = roleAssignments?.some((a) => a.branchId === branchId && a.isActive);
 					if (!hasBranchAccess) return;
 
 					branchWorkers.push({
@@ -109,33 +110,37 @@ export default function ManagementPage() {
 		} catch (error) { console.error("Subscription setup error:", error); }
 	}, [branchId, user]);
 
-	useEffect(() => {
-		if (user && branchId) {
-			loadWorkers();
-			loadBranches();
-		}
-	}, [user, branchId]);
-
-	useEffect(() => {
-		return () => {
-			workerSubscriptions.current.forEach((u) => u());
-			workerSubscriptions.current.clear();
-		};
-	}, []);
-
-	const loadWorkers = async () => {
+	const loadWorkers = useCallback(async () => {
 		if (!branchId) return;
 		try {
 			setLoading(true);
 			const workersData = await workerService.listWorkers({ branchId: branchId as string, excludeAdmins: true });
 			setWorkers(workersData);
 			setupWorkerSubscriptions();
-		} catch (err) { setError("Failed to load workers"); } finally { setLoading(false); }
-	};
+		} catch (err: unknown) { 
+			console.error("Load workers error:", err);
+			setError("Failed to load workers"); 
+		} finally { setLoading(false); }
+	}, [branchId, setupWorkerSubscriptions]);
 
-	const loadBranches = async () => {
-		try { setBranches(await branchService.getAllBranches()); } catch (err) { console.error(err); }
-	};
+	const loadBranches = useCallback(async () => {
+		try { setBranches(await branchService.getAllBranches()); } catch (err: unknown) { console.error(err); }
+	}, []);
+
+	useEffect(() => {
+		if (user && branchId) {
+			loadWorkers();
+			loadBranches();
+		}
+	}, [user, branchId, loadWorkers, loadBranches]);
+
+	useEffect(() => {
+		const currentSubscriptions = workerSubscriptions.current;
+		return () => {
+			currentSubscriptions.forEach((u) => u());
+			currentSubscriptions.clear();
+		};
+	}, []);
 
 	const handleModalClose = () => {
 		setIsCreateModalOpen(false); setIsEditModalOpen(false); setIsDeleteModalOpen(false);
@@ -160,6 +165,7 @@ export default function ManagementPage() {
 
 	if (authLoading || loading) return <div className="flex h-full items-center justify-center"><LoadingSpinner /></div>;
 	if (error) return <div className="p-6 text-red-500">{error}</div>;
+	if (!user) return null;
 
 	return (
 		<div className='flex flex-col h-full overflow-hidden'>
@@ -210,11 +216,13 @@ export default function ManagementPage() {
 							onRowClick={(w) => { setSelectedWorker(w); setIsWorkerDetailModalOpen(true); }}
 						/>
 					</>
-				) : (
-					<div className="bg-white p-20 rounded-2xl border border-dashed border-gray-300 text-center">
-						<div className="text-4xl mb-4">🕒</div>
-						<h3 className="text-lg font-bold">Attendance tracking coming soon</h3>
-					</div>
+					) : (
+					<AttendanceTable
+						branchId={branchId as string}
+						workers={workers}
+						branches={branches}
+						loading={loading}
+					/>
 				)}
 			</div>
 

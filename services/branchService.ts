@@ -21,6 +21,7 @@ export interface Branch {
 	location: string;
 	isActive: boolean;
 	imgUrl: string;
+	managerPin?: string;
 	createdAt: Timestamp;
 	updatedAt: Timestamp;
 }
@@ -30,6 +31,7 @@ export interface CreateBranchData {
 	location: string;
 	isActive?: boolean;
 	imgUrl?: string;
+	managerPin?: string;
 }
 
 export interface UpdateBranchData {
@@ -37,6 +39,7 @@ export interface UpdateBranchData {
 	location?: string;
 	isActive?: boolean;
 	imgUrl?: string;
+	managerPin?: string;
 }
 
 export const branchService = {

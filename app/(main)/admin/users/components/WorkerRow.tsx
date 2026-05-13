@@ -2,6 +2,7 @@ import React from "react";
 import { Worker } from "@/services/workerService";
 import { User } from "@/contexts/AuthContext";
 import StatusBadge from "./StatusBadge";
+import SafeImage from "@/components/SafeImage";
 
 interface WorkerRowProps {
 	worker: Worker;
@@ -129,16 +130,6 @@ export default function WorkerRow({
 
 	const canTimeInOut = canEdit && !worker.isAdmin;
 
-	const formatDate = (date?: Date) => {
-		if (!date) return "Never";
-		return new Intl.DateTimeFormat("en-US", {
-			month: "short",
-			day: "numeric",
-			hour: "2-digit",
-			minute: "2-digit",
-		}).format(date);
-	};
-
 	return (
 		<tr
 			onClick={() => onRowClick?.(worker)}
@@ -151,11 +142,12 @@ export default function WorkerRow({
 			<td className='px-6 py-4 whitespace-nowrap'>
 				<div className='flex items-center'>
 					{worker.profilePicture ? (
-						<img
-							src={worker.profilePicture}
-							alt={`${worker.name} profile`}
-							className='w-10 h-10 rounded-full mr-4'
-						/>
+						<div className='w-10 h-10 rounded-full mr-4 relative overflow-hidden'>
+							<SafeImage
+								src={worker.profilePicture}
+								alt={`${worker.name} profile`}
+							/>
+						</div>
 					) : (
 						<div className='w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center mr-4'>
 							<span className='text-sm font-medium text-gray-700'>

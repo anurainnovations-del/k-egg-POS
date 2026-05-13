@@ -11,15 +11,17 @@ import {
 	ResponsiveContainer,
 } from "recharts";
 import TopBar from "@/components/TopBar";
-import MobileTopBar from "@/components/MobileTopBar";
-import LoadingSpinner from "@/components/LoadingSpinner";
-import { subscribeToOrders } from "@/stores/dataStore";
-import { Order } from "@/services/orderService";
+import { useRealtimeData } from "@/contexts/RealtimeDataContext";
+import { Order, voidOrder } from "@/services/orderService";
 import { formatCurrency } from "@/services/salesService";
 import { useBranch } from "@/contexts/BranchContext";
+import { useAuth } from "@/contexts/AuthContext";
 import SearchIcon from "@/components/icons/SearchIcon";
 import SalesIcon from "@/components/icons/SidebarNav/SalesIcon";
 import ViewOnlyWrapper from "@/components/ViewOnlyWrapper";
+import { AnimatePresence, motion } from "motion/react";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import MobileTopBar from "@/components/MobileTopBar";
 
 interface TimeSeriesData {
 	label: string;
@@ -33,10 +35,11 @@ type ViewPeriod = "day" | "week" | "month";
 
 export default function SalesScreen() {
 	const { currentBranch } = useBranch();
+	const { user } = useAuth();
 	const [viewPeriod, setViewPeriod] = useState<ViewPeriod>("day");
 	const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData[]>([]);
-	const [allOrders, setAllOrders] = useState<Order[]>([]);
-	const [loading, setLoading] = useState(true);
+	const { orders: allOrders, loading: realtimeLoading } = useRealtimeData();
+	const loading = realtimeLoading.orders;
 	const [currentPeriodStats, setCurrentPeriodStats] = useState({
 		totalRevenue: 0,
 		totalOrders: 0,
@@ -48,19 +51,19 @@ export default function SalesScreen() {
 	const [ordersPerPage] = useState(10);
 	const [searchTerm, setSearchTerm] = useState("");
 
-	useEffect(() => {
-		if (!currentBranch) return;
+	const [voidModalOpen, setVoidModalOpen] = useState(false);
+	const [orderToVoid, setOrderToVoid] = useState<Order | null>(null);
+	const [pinInput, setPinInput] = useState("");
+	const [voidingError, setVoidingError] = useState("");
+	const [isVoiding, setIsVoiding] = useState(false);
+	
+	const toDate = (date: any): Date => {
+		if (!date) return new Date(0);
+		if (date.toDate) return date.toDate();
+		return new Date(date);
+	};
 
-		const unsubscribe = subscribeToOrders(
-			currentBranch.id,
-			(orders: Order[]) => {
-				setAllOrders(orders);
-				setLoading(false);
-			}
-		);
 
-		return () => unsubscribe();
-	}, [currentBranch]);
 
 	const getDateRange = (period: ViewPeriod) => {
 		const now = new Date();
@@ -91,8 +94,8 @@ export default function SalesScreen() {
 		(period: ViewPeriod): Order[] => {
 			const { startDate, endDate } = getDateRange(period);
 			return allOrders.filter((order) => {
-				if (!order.createdAt) return false;
-				const orderDate = (order.createdAt as any).toDate ? (order.createdAt as any).toDate() : new Date(order.createdAt as any);
+				if (!order.createdAt || order.status === 'VOIDED') return false;
+				const orderDate = toDate(order.createdAt);
 				return orderDate >= startDate && orderDate <= endDate;
 			});
 		},
@@ -112,8 +115,8 @@ export default function SalesScreen() {
 					hourEnd.setHours(hour, 59, 59, 999);
 
 					const hourOrders = orders.filter((order) => {
-						if (!order.createdAt) return false;
-						const orderDate = (order.createdAt as any).toDate ? (order.createdAt as any).toDate() : new Date(order.createdAt as any);
+						if (!order.createdAt || order.status === 'VOIDED') return false;
+						const orderDate = toDate(order.createdAt);
 						return orderDate >= hourStart && orderDate <= hourEnd;
 					});
 
@@ -138,8 +141,8 @@ export default function SalesScreen() {
 					dayEnd.setHours(23, 59, 59, 999);
 
 					const dayOrders = orders.filter((order) => {
-						if (!order.createdAt) return false;
-						const orderDate = (order.createdAt as any).toDate ? (order.createdAt as any).toDate() : new Date(order.createdAt as any);
+						if (!order.createdAt || order.status === 'VOIDED') return false;
+						const orderDate = toDate(order.createdAt);
 						return orderDate >= dayStart && orderDate <= dayEnd;
 					});
 
@@ -181,9 +184,9 @@ export default function SalesScreen() {
 		setCurrentPeriodStats({ totalRevenue, totalOrders, totalProfit, profitMargin });
 	}, [allOrders, viewPeriod, getFilteredOrders, generateTimeSeriesData]);
 
-	const formatTooltipValue = (value: number, name: string) => {
+	const formatTooltipValue = (value: any, name: any) => {
 		if (name === "revenue" || name === "profit") {
-			return [formatCurrency(value), name === "revenue" ? "Revenue" : "Profit"];
+			return [formatCurrency(Number(value)), name === "revenue" ? "Revenue" : "Profit"];
 		}
 		return [value, name === "orders" ? "Orders" : name];
 	};
@@ -203,6 +206,45 @@ export default function SalesScreen() {
 	const totalPages = Math.ceil(filteredOrdersForTable.length / ordersPerPage);
 
 	const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+
+	const handleVoidClick = (order: Order) => {
+		setOrderToVoid(order);
+		setVoidModalOpen(true);
+		setPinInput("");
+		setVoidingError("");
+	};
+
+	const executeVoid = async () => {
+		if (!currentBranch || !orderToVoid) return;
+
+		setIsVoiding(true);
+		setVoidingError("");
+
+		try {
+			// Check PIN if the branch has one
+			if (currentBranch.managerPin) {
+				const encoder = new TextEncoder();
+				const data = encoder.encode(pinInput + currentBranch.id);
+				const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+				const hashArray = Array.from(new Uint8Array(hashBuffer));
+				const hashedInput = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+				if (hashedInput !== currentBranch.managerPin) {
+					throw new Error("Invalid Manager PIN");
+				}
+			}
+
+			const workerName = user?.email?.split('@')[0] || "Unknown";
+			await voidOrder(currentBranch.id, orderToVoid.id, workerName);
+
+			setVoidModalOpen(false);
+			setOrderToVoid(null);
+		} catch (err: any) {
+			setVoidingError(err.message || "Failed to void order");
+		} finally {
+			setIsVoiding(false);
+		}
+	};
 
 	if (loading) {
 		return (
@@ -350,25 +392,39 @@ export default function SalesScreen() {
 												<th className='px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Type</th>
 												<th className='px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Total</th>
 												<th className='px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Profit</th>
+												<th className='px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Action</th>
 											</tr>
 										</thead>
 										<tbody className='divide-y divide-[var(--border)]'>
 											{currentOrders.map((order) => (
-												<tr key={order.id} className='hover:bg-gray-50 transition-colors'>
-													<td className='px-6 py-4 whitespace-nowrap text-xs font-bold text-[var(--secondary)]'>#{order.id?.slice(-6).toUpperCase()}</td>
+												<tr key={order.id} className={`hover:bg-gray-50 transition-colors ${order.status === 'VOIDED' ? 'opacity-50 grayscale' : ''}`}>
+													<td className='px-6 py-4 whitespace-nowrap text-xs font-bold text-[var(--secondary)]'>
+														#{order.id?.slice(-6).toUpperCase()}
+														{order.status === 'VOIDED' && <span className="ml-2 text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded uppercase">Voided</span>}
+													</td>
 													<td className='px-6 py-4 whitespace-nowrap text-xs text-gray-600'>
-														{order.createdAt ? ((order.createdAt as any).toDate ? (order.createdAt as any).toDate() : new Date(order.createdAt as any)).toLocaleString() : "—"}
+														{order.createdAt ? toDate(order.createdAt).toLocaleString() : "—"}
 													</td>
 													<td className='px-6 py-4 text-xs text-gray-600 max-w-xs truncate'>
-														{order.items.map(it => it.name).join(", ")}
+														{order.status === 'VOIDED' ? <span className="line-through">{order.items.map(it => it.name).join(", ")}</span> : order.items.map(it => it.name).join(", ")}
 													</td>
 													<td className='px-6 py-4 whitespace-nowrap'>
 														<span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase ${order.orderType === 'DINE-IN' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
 															{order.orderType}
 														</span>
 													</td>
-													<td className='px-6 py-4 whitespace-nowrap text-xs font-bold text-[var(--secondary)]'>{formatCurrency(order.total)}</td>
-													<td className='px-6 py-4 whitespace-nowrap text-xs font-bold text-green-600'>{formatCurrency(order.totalProfit || 0)}</td>
+													<td className='px-6 py-4 whitespace-nowrap text-xs font-bold text-[var(--secondary)]'>{order.status === 'VOIDED' ? <span className="line-through">{formatCurrency(order.total)}</span> : formatCurrency(order.total)}</td>
+													<td className='px-6 py-4 whitespace-nowrap text-xs font-bold text-green-600'>{order.status === 'VOIDED' ? <span className="line-through">{formatCurrency(order.totalProfit || 0)}</span> : formatCurrency(order.totalProfit || 0)}</td>
+													<td className='px-6 py-4 whitespace-nowrap text-center'>
+														{order.status !== 'VOIDED' && (
+															<button
+																onClick={() => handleVoidClick(order)}
+																className="text-[10px] text-red-500 hover:text-white border border-red-500 hover:bg-red-500 px-3 py-1 rounded-lg font-bold transition-all"
+															>
+																VOID
+															</button>
+														)}
+													</td>
 												</tr>
 											))}
 										</tbody>
@@ -390,6 +446,64 @@ export default function SalesScreen() {
 					</div>
 				</div>
 			</div>
+
+			{/* Void Modal */}
+			<AnimatePresence>
+				{voidModalOpen && (
+					<motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+						onClick={() => !isVoiding && setVoidModalOpen(false)}
+					>
+						<motion.div
+							initial={{ opacity: 0, y: 14, scale: 0.98 }}
+							animate={{ opacity: 1, y: 0, scale: 1 }}
+							exit={{ opacity: 0, y: 10, scale: 0.98 }}
+							className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<h3 className="text-xl font-bold text-[var(--secondary)] mb-2">Void Order?</h3>
+							<p className="text-sm text-gray-500 mb-6">
+								Are you sure you want to void order <span className="font-bold text-[var(--secondary)]">#{orderToVoid?.id?.slice(-6).toUpperCase()}</span>? This will reverse ingredient deductions and exclude it from sales totals.
+							</p>
+
+							{currentBranch?.managerPin && (
+								<div className="mb-6">
+									<label className="block text-xs font-bold text-[var(--secondary)]/60 uppercase mb-2">Manager PIN Required</label>
+									<input
+										type="password"
+										maxLength={6}
+										placeholder="Enter PIN"
+										value={pinInput}
+										onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+										className="w-full px-4 py-3 text-center tracking-[0.5em] text-lg font-bold rounded-xl border-2 border-[var(--border)] focus:border-[var(--accent)] outline-none"
+									/>
+									{voidingError && <p className="text-xs text-red-500 font-bold mt-2 text-center">{voidingError}</p>}
+								</div>
+							)}
+
+							<div className="flex gap-3">
+								<button
+									onClick={() => setVoidModalOpen(false)}
+									disabled={isVoiding}
+									className="flex-1 py-3 rounded-xl border border-[var(--border)] font-bold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={executeVoid}
+									disabled={isVoiding || (!!currentBranch?.managerPin && pinInput.length < 4)}
+									className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
+								>
+									{isVoiding ? "Voiding..." : "Confirm Void"}
+								</button>
+							</div>
+						</motion.div>
+					</motion.div>
+				)}
+			</AnimatePresence>
 		</ViewOnlyWrapper>
 	);
 }

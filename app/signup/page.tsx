@@ -486,7 +486,7 @@ export default function SignUpPage() {
             {/* Footer */}
             <div className="mt-6 text-center">
               <p className="text-xs text-[var(--secondary)] opacity-50">
-                FoodMood Point-of-Sales System v1.0
+                K-egg Point-of-Sales System v1.0
               </p>
             </div>
           </div>

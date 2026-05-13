@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { MenuItem } from "@/services/menuItemService";
 import { Ingredient } from "@/services/ingredientService";
-import { subscribeToMenuItems, subscribeToIngredients, subscribeToCategories } from "@/stores/dataStore";
+import { useRealtimeData } from "@/contexts/RealtimeDataContext";
 import { Category } from "@/services/categoryService";
 import { createOrder } from "@/services/orderService";
 import { getMenuItemsAvailability } from "@/services/availabilityService";
@@ -23,6 +23,7 @@ import SafeImage from "@/components/SafeImage";
 import ViewOnlyWrapper from "@/components/ViewOnlyWrapper";
 import DiscountDropdown from "./components/DiscountDropdown";
 import StoreIcon from "@/components/icons/SidebarNav/StoreIcon";
+import QuickTimeWidget from "@/components/QuickTimeWidget";
 
 // ─── Cart type ────────────────────────────────────────────────────────────────
 interface CartItem {
@@ -68,12 +69,9 @@ export default function StoreScreen() {
   const { printReceipt } = useBluetoothPrinter();
   const timeTracking = useTimeTracking({ autoRefresh: true });
 
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const { menuItems, ingredients, categories, loading: realtimeLoading } = useRealtimeData();
+  const loading = realtimeLoading.menu || realtimeLoading.ingredients || realtimeLoading.categories;
   const [availability, setAvailability] = useState<Map<string, number>>(new Map());
-  const [loading, setLoading] = useState(true);
-  const [isClient, setIsClient] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -82,44 +80,22 @@ export default function StoreScreen() {
   const [orderType, setOrderType] = useState<"DINE-IN" | "TAKE OUT" | "DELIVERY">("TAKE OUT");
   const [discountAmount, setDiscountAmount] = useState(0);
   const [appliedDiscount, setAppliedDiscount] = useState<Discount | null>(null);
+  const [discountCode, setDiscountCode] = useState("");
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [successOrderId, setSuccessOrderId] = useState("");
   const [showOrderMenu, setShowOrderMenu] = useState(false);
 
+  const [isClient, setIsClient] = useState(false);
+
+  // Initialize client state for settings
   useEffect(() => { setIsClient(true); }, []);
 
   // Recalculate availability whenever ingredients or menu items change
   useEffect(() => {
     setAvailability(getMenuItemsAvailability(menuItems, ingredients));
   }, [menuItems, ingredients]);
-
-  // Subscribe to menu items
-  useEffect(() => {
-    if (!isClient || !currentBranch) return;
-    setLoading(true);
-    const unsub = subscribeToMenuItems(currentBranch.id, (items) => {
-      setMenuItems(items);
-      setLoading(false);
-    });
-    const timeout = setTimeout(() => setLoading(false), 10000);
-    return () => { clearTimeout(timeout); unsub(); };
-  }, [isClient, currentBranch]);
-
-  // Subscribe to ingredients (for availability calculation)
-  useEffect(() => {
-    if (!isClient || !currentBranch) return;
-    const unsub = subscribeToIngredients(currentBranch.id, setIngredients);
-    return () => unsub();
-  }, [isClient, currentBranch]);
-
-  // Subscribe to categories
-  useEffect(() => {
-    if (!isClient) return;
-    const unsub = subscribeToCategories(setCategories);
-    return () => unsub();
-  }, [isClient]);
 
   // Load settings
   useEffect(() => {
@@ -178,6 +154,7 @@ export default function StoreScreen() {
     setCart([]);
     setDiscountAmount(0);
     setAppliedDiscount(null);
+    setDiscountCode("");
   };
 
   const subtotal = cart.reduce((s, c) => s + c.price * c.quantity, 0);
@@ -220,6 +197,7 @@ export default function StoreScreen() {
       setShowToast(true);
       clearCart();
       setShowConfirm(false);
+      setShowOrderMenu(false); // Close mobile overlay after successful order
     } catch (err) {
       console.error("Order error:", err);
       alert("Failed to place order. Please try again.");
@@ -278,17 +256,26 @@ export default function StoreScreen() {
           </div>
         ) : (
           cart.map((item) => (
-            <div key={item.id} className="flex items-center gap-3 bg-[var(--background)] rounded-xl p-3">
+            <div key={item.id} className="flex items-center gap-3 bg-[var(--background)] rounded-xl p-2 pr-3">
+              <div className="w-12 h-12 flex-shrink-0 bg-white rounded-lg overflow-hidden border border-[var(--border)] relative">
+                {item.imgUrl ? (
+                  <SafeImage src={item.imgUrl} alt={item.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[var(--secondary)]/30">
+                    <StoreIcon className="w-6 h-6" />
+                  </div>
+                )}
+              </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-[var(--secondary)] truncate">{item.name}</p>
-                <p className="text-xs text-[var(--secondary)]/60">{formatCurrency(item.price)} each</p>
+                <p className="font-semibold text-[13px] text-[var(--secondary)] whitespace-nowrap leading-tight">{item.name}</p>
+                <p className="text-[10px] text-[var(--secondary)]/60">{formatCurrency(item.price)} each</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => updateQuantity(item.id, -1)} className="w-7 h-7 rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center text-sm">−</button>
-                <span className="w-6 text-center font-bold text-[var(--secondary)] text-sm">{item.quantity}</span>
-                <button onClick={() => updateQuantity(item.id, 1)} className="w-7 h-7 rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center text-sm">+</button>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => updateQuantity(item.id, -1)} className="w-6 h-6 rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center text-sm">−</button>
+                <span className="w-5 text-center font-bold text-[var(--secondary)] text-xs">{item.quantity}</span>
+                <button onClick={() => updateQuantity(item.id, 1)} className="w-6 h-6 rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center text-sm">+</button>
               </div>
-              <span className="text-sm font-bold text-[var(--secondary)] w-16 text-right">{formatCurrency(item.price * item.quantity)}</span>
+              <span className="text-[13px] font-bold text-[var(--secondary)] w-14 text-right">{formatCurrency(item.price * item.quantity)}</span>
             </div>
           ))
         )}
@@ -298,10 +285,12 @@ export default function StoreScreen() {
       {cart.length > 0 && (
         <div className="flex-shrink-0 px-5 py-4 border-t border-[var(--border)] space-y-3">
           <DiscountDropdown
-            branchId={currentBranch?.id ?? ""}
+            value={discountCode}
+            onChange={setDiscountCode}
             subtotal={subtotal}
             cartCategoryIds={[...new Set(cart.map((c) => c.categoryId))]}
             onDiscountApplied={(d, amt) => { setAppliedDiscount(d); setDiscountAmount(amt); }}
+            categories={categories}
           />
           <div className="space-y-1 text-sm text-[var(--secondary)]">
             <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
@@ -331,14 +320,27 @@ export default function StoreScreen() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xl">
               <h3 className="text-lg font-bold text-[var(--secondary)] mb-1">Confirm Order</h3>
               <p className="text-sm text-[var(--secondary)]/60 mb-4">{cart.length} item(s) · {orderType}</p>
-              <div className="border-t border-[var(--border)] py-3 space-y-1 text-sm text-[var(--secondary)]">
+              <div className="border-t border-[var(--border)] py-3 space-y-1 text-sm text-[var(--secondary)] overflow-x-auto">
                 {cart.map((c) => (
-                  <div key={c.id} className="flex justify-between">
-                    <span>{c.name} ×{c.quantity}</span>
-                    <span>{formatCurrency(c.price * c.quantity)}</span>
+                  <div key={c.id} className="flex items-center gap-2">
+                    <div className="w-8 h-8 flex-shrink-0 bg-gray-50 rounded overflow-hidden border border-[var(--border)] relative">
+                      {c.imgUrl ? (
+                        <SafeImage src={c.imgUrl} alt={c.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[var(--secondary)]/20">
+                          <StoreIcon className="w-4 h-4" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between text-xs gap-4">
+                        <span className="whitespace-nowrap">{c.name} <span className="font-bold whitespace-nowrap">×{c.quantity}</span></span>
+                        <span className="font-semibold whitespace-nowrap">{formatCurrency(c.price * c.quantity)}</span>
+                      </div>
+                    </div>
                   </div>
                 ))}
                 {discountAmount > 0 && <div className="flex justify-between text-[var(--success)]"><span>Discount</span><span>−{formatCurrency(discountAmount)}</span></div>}
@@ -368,6 +370,10 @@ export default function StoreScreen() {
               <TopBar title="Store" icon={<StoreIcon />} showTimeTracking />
             </div>
           </div>
+          
+          <div className="px-6 pt-4">
+            <QuickTimeWidget />
+          </div>
 
           {/* Search */}
           <div className="px-6 pt-4 pb-2">
@@ -379,7 +385,7 @@ export default function StoreScreen() {
           </div>
 
           {/* Category Filters */}
-          <div className="px-6 pb-2 flex gap-2 overflow-x-auto flex-wrap">
+          <div className="px-6 pb-2 flex gap-2 overflow-x-auto no-scrollbar">
             <button
               onClick={() => setSelectedCategories([])}
               className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
@@ -420,7 +426,7 @@ export default function StoreScreen() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-2">
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-2">
                 {filteredItems.map((item) => {
                   const maxServings = availability.get(item.id ?? "") ?? 0;
                   const available = getAvailableServings(item.id ?? "");
@@ -460,12 +466,12 @@ export default function StoreScreen() {
                       {/* Info */}
                       <div className="p-3">
                         <h3 className="font-bold text-sm text-[var(--secondary)] truncate">{item.name}</h3>
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-xs px-2 py-0.5 rounded-full font-medium text-white"
+                        <div className="flex items-center justify-between mt-1.5 gap-2">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white truncate max-w-[60%]"
                             style={{ backgroundColor: getCategoryColor(item.categoryId) || "#6b7280" }}>
                             {getCategoryName(item.categoryId)}
                           </span>
-                          <span className="font-bold text-sm text-[var(--secondary)]">{formatCurrency(item.price)}</span>
+                          <span className="font-bold text-sm text-[var(--secondary)] whitespace-nowrap">{formatCurrency(item.price)}</span>
                         </div>
                       </div>
                     </div>
@@ -477,7 +483,7 @@ export default function StoreScreen() {
         </div>
 
         {/* ── Desktop Order Panel ── */}
-        <div className="hidden xl:flex flex-col w-[320px] border-l border-[var(--border)] bg-white h-full overflow-hidden">
+        <div className="hidden xl:flex flex-col w-[480px] border-l border-[var(--border)] bg-white h-full overflow-hidden">
           <OrderPanel />
         </div>
 

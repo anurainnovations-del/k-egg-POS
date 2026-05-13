@@ -42,3 +42,4 @@ next-env.d.ts
 svgr.d.ts
 
 foodmood-firebaseadmin-credentials.json
+*-firebase-adminsdk-*.json

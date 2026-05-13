@@ -14,6 +14,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { useState } from "react";
 import { useTimeTracking } from "@/contexts/TimeTrackingContext";
 import { useBranch } from "@/contexts/BranchContext";
+import StockAlertBell from "@/components/StockAlertBell";
 
 interface MobileTopBarProps {
 	title?: string;
@@ -87,8 +88,8 @@ export default function MobileTopBar({
 					<MenuBurger className="text-[var(--primary)]"/>
 				</button>
 				<div className='flex-1 flex justify-center'>
-					<div className='items-center justify-center rounded-[100px] bg-[var(--accent)] pt-3 pb-2 '>
-						<TextLogo className='h-5 items-center' />
+					<div className='flex items-center justify-center'>
+						<TextLogo className='h-10 items-center' />
 					</div>
 				</div>{" "}
 				{onOrderClick ? (
@@ -97,9 +98,9 @@ export default function MobileTopBar({
 						className='h-12 w-12 bg-[var(--accent)] xl:bg-[var(--primary)] rounded-xl flex justify-center items-center opacity-100 hover:opacity-50 transition-all cursor-pointer'>
 						<OrderCartIcon className="h-6 w-6 text-[var(--primary)]" />
 					</button>
-				) :
-					<div className='h-12 w-12' />
-				}
+				) : (
+					<StockAlertBell />
+				)}
 			</div>
 			<div className='flex items-center gap-3 px-4 py-2 overflow-x-auto'>
 				<div className='flex-1 h-12 px-3 py-2 flex bg-[var(--primary)] rounded-xl text-[var(--secondary)] gap-2 items-center font-medium text-xs'>
