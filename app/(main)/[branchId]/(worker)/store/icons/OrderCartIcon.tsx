@@ -1,0 +1,8 @@
+// components/icons/HomeIcon.tsx
+export default function OrderCartIcon({ className }: { className?: string }) {
+	return (
+		<svg width="20" height="24" viewBox="0 0 20 24" fill="none" className={className}>
+			<path d="M3 20.3057H16.127V7.69141H3V20.3057ZM14.6035 15.4023V18.4023H4.52344V15.4023H14.6035ZM14.6035 10.498V13.498H4.52344V10.498H14.6035ZM3 4.69141H16.127V3H3V4.69141ZM19.127 20.8057C19.1268 22.1863 18.0076 23.3057 16.627 23.3057H2.5C1.11938 23.3057 0.000148425 22.1862 0 20.8057V2.5C0 1.11929 1.11929 5.15404e-07 2.5 0H16.627C18.0077 0 19.127 1.11929 19.127 2.5V20.8057Z" fill="currentColor"/>
+		</svg>
+	);
+}

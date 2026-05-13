@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --primary:        #FFFFFF;
+  --secondary:      #3D2B1F;
+  --background:     #FDF6EC;
+  --accent:         #F59E0B;
+  --light-accent:   #FEF3C7;
+  --accent-2:       #EF4444;
+  --foreground:     #3D2B1F;
+  --error:          #DC2626;
+  --success:        #16A34A;
+  --card:           #FFFFFF;
+  --border:         #F3E8D6;
+}
+
+@theme inline {
+  --color-primary:     var(--primary);
+  --color-secondary:   var(--secondary);
+  --color-background:  var(--background);
+  --color-accent:      var(--accent);
+  --color-foreground:  var(--foreground);
+  --font-poppins:      var(--font-poppins);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary:        #FFFFFF;
+    --secondary:      #3D2B1F;
+    --background:     #FDF6EC;
+    --accent:         #F59E0B;
+    --light-accent:   #FEF3C7;
+    --accent-2:       #EF4444;
+    --foreground:     #3D2B1F;
+    --error:          #DC2626;
+    --success:        #16A34A;
+    --card:           #FFFFFF;
+    --border:         #F3E8D6;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-poppins), Arial, Helvetica, sans-serif;
+}
+
+/* Hide scrollbars for horizontal scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

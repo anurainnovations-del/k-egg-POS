@@ -1,0 +1,10 @@
+.cartoonCard {
+	transition: box-shadow 0.3s, transform 0.3s, border-color 0.3s;
+	border-radius: 1.25rem;
+}
+.cartoonCard:hover {
+	box-shadow: 0 8px 32px 0 rgba(60, 60, 120, 0.18), 0 1.5px 0 0 #fff;
+	transform: scale(1.04) translateY(-4px);
+	border-color: var(--accent);
+	filter: drop-shadow(0 2px 8px rgba(60, 60, 120, 0.1));
+}
