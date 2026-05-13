@@ -6,7 +6,7 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/firebase-config";
 import { authService } from "@/services/authService";
 import LogoVerticalIcon from "@/components/icons/LogoVerticalIcon";
-import { FirebaseError } from "@firebase/util";
+import { FirebaseError } from "firebase/app";
 import Link from "next/link";
 
 interface SignUpFormData {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import LogoVerticalIcon from "@/components/icons/LogoVerticalIcon";
-import { FirebaseError } from "@firebase/util";
+import { FirebaseError } from "firebase/app";
 
 import Link from "next/link";
 
