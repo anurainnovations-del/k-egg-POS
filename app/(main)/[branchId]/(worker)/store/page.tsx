@@ -87,6 +87,7 @@ export default function StoreScreen() {
   const [successOrderId, setSuccessOrderId] = useState("");
   const [showOrderMenu, setShowOrderMenu] = useState(false);
 
+  const [receivedAmount, setReceivedAmount] = useState<number | "">("");
   const [isClient, setIsClient] = useState(false);
 
   // Initialize client state for settings
@@ -155,6 +156,7 @@ export default function StoreScreen() {
     setDiscountAmount(0);
     setAppliedDiscount(null);
     setDiscountCode("");
+    setReceivedAmount("");
   };
 
   const subtotal = cart.reduce((s, c) => s + c.price * c.quantity, 0);
@@ -181,11 +183,14 @@ export default function StoreScreen() {
 
       // Print receipt
       try {
+        const payment = typeof receivedAmount === "number" ? receivedAmount : total;
+        const change = Math.max(0, payment - total);
+
         const bytes = await formatReceiptWithLogo({
           orderId, date: new Date(),
           items: cart.map((c) => ({ name: c.name, qty: c.quantity, price: c.price, total: c.price * c.quantity })),
           subtotal, discount: discountAmount, appliedDiscountCode: appliedDiscount?.discount_code ?? "",
-          total, payment: total, change: 0,
+          total, payment, change,
           cashier: timeTracking.worker?.name ?? user.displayName ?? "Worker",
           cashierEmployeeId: timeTracking.worker?.employeeId ?? user.uid,
           storeName: "K-egg POS", branchName: currentBranch.name,
@@ -349,13 +354,50 @@ export default function StoreScreen() {
                   </div>
                 ))}
                 {discountAmount > 0 && <div className="flex justify-between text-[var(--success)]"><span>Discount</span><span>−{formatCurrency(discountAmount)}</span></div>}
-                <div className="flex justify-between font-bold pt-1 border-t border-[var(--border)]"><span>Total</span><span>{formatCurrency(total)}</span></div>
+                <div className="flex justify-between font-bold pt-1 border-t border-[var(--border)] text-lg text-[var(--secondary)]">
+                  <span>Total</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
               </div>
-              <div className="flex gap-3 mt-4">
-                <button onClick={() => setShowConfirm(false)} className="flex-1 py-2.5 rounded-xl border-2 border-[var(--border)] text-[var(--secondary)] font-semibold hover:bg-[var(--background)] transition-all">Cancel</button>
-                <button onClick={confirmPlaceOrder} disabled={isPlacingOrder}
-                  className="flex-[2] py-2.5 rounded-xl bg-[var(--accent)] text-[var(--secondary)] font-bold hover:bg-[var(--accent)]/80 transition-all shadow-md disabled:opacity-50">
-                  {isPlacingOrder ? "Placing..." : "Confirm"}
+
+              {/* Cash Calculation */}
+              <div className="mt-4 p-4 bg-[var(--background)] rounded-2xl border border-[var(--border)] space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm font-bold text-[var(--secondary)]">Cash Received</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">₱</span>
+                    <input 
+                      type="number" 
+                      value={receivedAmount}
+                      onChange={(e) => setReceivedAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="0.00"
+                      className="w-32 pl-7 pr-3 py-2 rounded-xl border border-[var(--border)] focus:ring-2 focus:ring-[var(--accent)] outline-none text-right font-bold text-[var(--secondary)]"
+                    />
+                  </div>
+                </div>
+                {typeof receivedAmount === "number" && (
+                  <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]/50">
+                    <span className="text-sm font-bold text-[var(--secondary)]/60">Change</span>
+                    <span className={`text-lg font-black ${receivedAmount < total ? "text-red-500" : "text-[var(--success)]"}`}>
+                      {formatCurrency(Math.max(0, receivedAmount - total))}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => { setShowConfirm(false); setReceivedAmount(""); }} 
+                  className="flex-1 py-3 rounded-xl border-2 border-[var(--border)] text-[var(--secondary)] font-semibold hover:bg-[var(--background)] transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmPlaceOrder} 
+                  disabled={isPlacingOrder || (typeof receivedAmount === "number" && receivedAmount < total)}
+                  className="flex-[2] py-3 rounded-xl bg-[var(--accent)] text-[var(--secondary)] font-bold hover:brightness-110 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isPlacingOrder ? "Placing..." : "Complete Order"}
                 </button>
               </div>
             </motion.div>
