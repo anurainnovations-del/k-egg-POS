@@ -301,7 +301,12 @@ export default function StoreScreen() {
           </div>
           <div className="flex gap-2">
             <button onClick={clearCart} className="flex-1 py-2 rounded-xl border-2 border-[var(--accent)] text-[var(--secondary)] font-semibold text-sm hover:bg-[var(--light-accent)] transition-all">Clear</button>
-            <button onClick={() => setShowConfirm(true)} className="flex-[2] py-2 rounded-xl bg-[var(--accent)] text-[var(--secondary)] font-bold text-sm hover:bg-[var(--accent)]/80 transition-all shadow-md">
+            <button 
+              onClick={() => {
+                setShowConfirm(true);
+                if (isMobile && onClose) onClose();
+              }} 
+              className="flex-[2] py-2 rounded-xl bg-[var(--accent)] text-[var(--secondary)] font-bold text-sm hover:bg-[var(--accent)]/80 transition-all shadow-md">
               Place Order
             </button>
           </div>
