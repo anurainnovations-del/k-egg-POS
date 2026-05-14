@@ -2,8 +2,8 @@ const CACHE_NAME = "k-egg-pos-v1";
 const APP_SHELL_ASSETS = [
 	"/",
 	"/manifest.json",
-	"/web-app-manifest-192x192.png",
-	"/web-app-manifest-512x512.png",
+	"/192x192.png",
+	"/512x512.png",
 	"/cover.png",
 ];
 
