@@ -23,8 +23,8 @@ export const metadata: Metadata = {
 		title: "K-egg POS",
 	},
 	icons: {
-		icon: "/192x192.png",
-		apple: "/192x192.png",
+		icon: "/192x192.png?v=2",
+		apple: "/192x192.png?v=2",
 	},
 };
 

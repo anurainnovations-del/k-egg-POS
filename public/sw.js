@@ -1,4 +1,4 @@
-const CACHE_NAME = "k-egg-pos-v1";
+const CACHE_NAME = "k-egg-pos-v2";
 const APP_SHELL_ASSETS = [
 	"/",
 	"/manifest.json",
