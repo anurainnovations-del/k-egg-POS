@@ -124,7 +124,14 @@ self.addEventListener("fetch", (event) => {
 	}
 
 	if (request.mode === "navigate") {
-		event.respondWith(staleWhileRevalidate("/", SHELL_CACHE));
+		event.respondWith(
+			staleWhileRevalidate(request, SHELL_CACHE).then((response) => {
+				if (response) return response;
+				return caches
+					.match("/")
+					.then((fallback) => fallback || Response.error());
+			}),
+		);
 		return;
 	}
 
