@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useRouter } from "next/navigation";
@@ -21,7 +21,6 @@ export default function BranchSelector({
 	const { currentBranch, availableBranches, loading, setCurrentBranchId } =
 		useBranch();
 	const router = useRouter();
-	const [isOpen, setIsOpen] = useState(false);
 
 	// Don't render if no user or no branches
 	if (!user || loading) {
@@ -50,7 +49,6 @@ export default function BranchSelector({
 
 	const handleBranchChange = (branchId: string) => {
 		setCurrentBranchId(branchId);
-		setIsOpen(false);
 
 		if (redirectOnChange) {
 			// Navigate to the new branch URL

@@ -18,12 +18,17 @@ import { formatCurrency } from "@/lib/currency_formatter";
 import { AnimatePresence, motion } from "motion/react";
 import CategoryManagementModal from "@/components/CategoryManagementModal";
 
-// ─── Recipe Builder Section ───────────────────────────────────────────────────
+interface RecipeItem {
+  ingredientId: string;
+  ingredientName: string;
+  quantity: number;
+  unit: string;
+}
 
 function RecipeBuilder({ 
   recipe, ingredients, onRecipeChange 
 }: { 
-  recipe: any[]; ingredients: Ingredient[]; onRecipeChange: (newRecipe: any[]) => void 
+  recipe: RecipeItem[]; ingredients: Ingredient[]; onRecipeChange: (newRecipe: RecipeItem[]) => void 
 }) {
   const [selectedIngId, setSelectedIngId] = useState("");
   const [qty, setQty] = useState(0);
@@ -35,8 +40,8 @@ function RecipeBuilder({
     // Check if already in recipe
     if (recipe.some(r => r.ingredientId === ing.id)) return;
 
-    const newItem = {
-      ingredientId: ing.id,
+    const newItem: RecipeItem = {
+      ingredientId: ing.id!,
       ingredientName: ing.name,
       quantity: qty,
       unit: ing.unit
@@ -253,7 +258,15 @@ export default function ManagerMenuPage() {
     if (selectedItem) {
       await menuItemService.updateMenuItem(currentBranch.id, selectedItem.id!, data);
     } else {
-      const { id: _id, branchId: _branchId, createdAt: _createdAt, updatedAt: _updatedAt, ...itemData } = data as any;
+      const itemData: Omit<MenuItem, "id" | "branchId" | "createdAt" | "updatedAt"> = {
+        name: data.name || "",
+        price: data.price !== undefined ? data.price : 0,
+        categoryId: data.categoryId || "",
+        description: data.description || "",
+        imgUrl: data.imgUrl,
+        isAvailable: data.isAvailable !== undefined ? data.isAvailable : true,
+        recipe: data.recipe || [],
+      };
       await menuItemService.addMenuItem(currentBranch.id, itemData);
     }
   };

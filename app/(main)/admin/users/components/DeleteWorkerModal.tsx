@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Image from "next/image";
 import { workerService, Worker } from "@/services/workerService";
 
 interface DeleteWorkerModalProps {
@@ -102,10 +103,13 @@ export default function DeleteWorkerModal({
 						<div className='bg-gray-50 rounded-lg p-4 mb-6'>
 							<div className='flex items-center'>
 								{worker.profilePicture ? (
-									<img
+									<Image
 										src={worker.profilePicture}
 										alt={`${worker.name} profile`}
+										width={48}
+										height={48}
 										className='w-12 h-12 rounded-full mr-4'
+										unoptimized
 									/>
 								) : (
 									<div className='w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center mr-4'>

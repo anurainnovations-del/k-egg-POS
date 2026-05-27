@@ -63,8 +63,9 @@ function CategoryEditorModal({
         await categoryService.createCategory(name.trim(), color, defaultType);
       }
       onClose();
-    } catch (e: any) {
-      setError(e.message || "Failed to save category.");
+    } catch (e: unknown) {
+      const err = e as Error;
+      setError(err.message || "Failed to save category.");
     } finally {
       setSaving(false);
     }

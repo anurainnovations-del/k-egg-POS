@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { WorkerStats } from "@/types/WorkerTypes";
 import { workSessionService, WorkSession } from "@/services/workSessionService";
 import { Worker } from "@/services/workerService";
 import { useAccessibleBranches } from "@/contexts/BranchContext";
-import { Timestamp } from "firebase/firestore";
+import { Branch } from "@/services/branchService";
 
 interface WorkerStatsProps {
 	worker: Worker;
@@ -22,11 +22,7 @@ export default function WorkerStatsComponent({
 	const [error, setError] = useState<string | null>(null);
 	const { allBranches } = useAccessibleBranches();
 
-	useEffect(() => {
-		loadWorkerStats();
-	}, [worker.id, dateRange]);
-
-	const loadWorkerStats = async () => {
+	const loadWorkerStats = useCallback(async () => {
 		try {
 			setLoading(true);
 			setError(null);
@@ -46,7 +42,7 @@ export default function WorkerStatsComponent({
 				: allSessions;
 
 			// Calculate stats from sessions
-			const calculatedStats = calculateWorkerStats(worker.id, filteredSessions);
+			const calculatedStats = calculateWorkerStats(worker.id, filteredSessions, allBranches);
 			setStats(calculatedStats);
 		} catch (err: unknown) {
 			console.error("Error loading worker stats:", err);
@@ -54,284 +50,11 @@ export default function WorkerStatsComponent({
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [worker.id, dateRange, allBranches]);
 
-	const calculateWorkerStats = (
-		userId: string,
-		sessions: WorkSession[]
-	): WorkerStats => {
-		// Initialize stats
-		const stats: WorkerStats = {
-			userId,
-			totalHoursWorked: 0,
-			totalSessions: sessions.length,
-			averageSessionDuration: 0,
-			currentStreak: 0,
-			longestStreak: 0,
-			thisWeek: {
-				hoursWorked: 0,
-				sessionsCount: 0,
-				daysWorked: 0,
-			},
-			thisMonth: {
-				hoursWorked: 0,
-				sessionsCount: 0,
-				daysWorked: 0,
-			},
-			branchStats: [],
-			overtime: {
-				thisWeek: 0,
-				thisMonth: 0,
-				total: 0,
-			},
-			attendance: {
-				punctualityScore: 0,
-				averageClockInDelay: 0,
-				missedShifts: 0,
-			},
-		};
-
-		if (sessions.length === 0) {
-			return stats;
-		}
-
-		// Calculate date boundaries
-		const now = new Date();
-		const weekStart = new Date(now);
-		weekStart.setDate(now.getDate() - now.getDay()); // Start of current week
-		weekStart.setHours(0, 0, 0, 0);
-
-		const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-		// Track totals and branch performance
-		const branchMap = new Map();
-		let totalMinutes = 0;
-		let onTimeCount = 0;
-		let totalDelayMinutes = 0;
-
-		// Track days worked for streaks
-		const workedDates = new Set();
-		const thisWeekDates = new Set();
-		const thisMonthDates = new Set();
-
-		sessions.forEach((session) => {
-			const sessionDate = session.timeInAt.toDate();
-			const dayKey = sessionDate.toDateString();
-			workedDates.add(dayKey);
-
-			// Calculate session duration
-			let duration = 0;
-			if (session.duration) {
-				duration = session.duration;
-			} else if (session.timeInAt && session.timeOutAt) {
-				const startTime = session.timeInAt.toDate();
-				const endTime = session.timeOutAt.toDate();
-				duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60); // minutes
-			}
-
-			totalMinutes += duration;
-			stats.totalHoursWorked += duration / 60;
-
-			// Track branch stats
-			if (!branchMap.has(session.branchId)) {
-				branchMap.set(session.branchId, {
-					branchId: session.branchId,
-					hoursWorked: 0,
-					sessionsCount: 0,
-					lastWorked: session.timeInAt,
-				});
-			}
-
-			const branchStat = branchMap.get(session.branchId);
-			branchStat.hoursWorked += duration / 60;
-			branchStat.sessionsCount++;
-
-			if (session.timeInAt.toDate() > branchStat.lastWorked.toDate()) {
-				branchStat.lastWorked = session.timeInAt;
-			}
-
-			// This week stats
-			if (sessionDate >= weekStart) {
-				stats.thisWeek.hoursWorked += duration / 60;
-				stats.thisWeek.sessionsCount++;
-				thisWeekDates.add(dayKey);
-			}
-
-			// This month stats
-			if (sessionDate >= monthStart) {
-				stats.thisMonth.hoursWorked += duration / 60;
-				stats.thisMonth.sessionsCount++;
-				thisMonthDates.add(dayKey);
-			}
-
-			// Punctuality calculation (on-time if within 15 minutes of hour)
-			const minutes = sessionDate.getMinutes();
-			if (minutes <= 15 || minutes >= 45) {
-				onTimeCount++;
-			} else {
-				// Calculate delay
-				const delay = minutes <= 30 ? minutes : 60 - minutes;
-				totalDelayMinutes += delay;
-			}
-		});
-
-		// Set calculated values
-		stats.thisWeek.daysWorked = thisWeekDates.size;
-		stats.thisMonth.daysWorked = thisMonthDates.size;
-		stats.branchStats = Array.from(branchMap.values());
-
-		// Average session duration
-		stats.averageSessionDuration =
-			sessions.length > 0 ? totalMinutes / sessions.length : 0;
-
-		// Punctuality score
-		stats.attendance.punctualityScore =
-			sessions.length > 0
-				? Math.round((onTimeCount / sessions.length) * 100)
-				: 0;
-
-		// Average delay
-		const lateSessionsCount = sessions.length - onTimeCount;
-		stats.attendance.averageClockInDelay =
-			lateSessionsCount > 0
-				? Math.round(totalDelayMinutes / lateSessionsCount)
-				: 0;
-
-		// Calculate streaks
-		const { currentStreak, longestStreak } = calculateStreaks(
-			Array.from(workedDates).sort() as string[]
-		);
-		stats.currentStreak = currentStreak;
-		stats.longestStreak = longestStreak;
-
-		// Set last session
-		if (sessions.length > 0) {
-			const lastSession = sessions[0]; // Sessions are ordered by timeInAt desc
-			stats.lastSession = {
-				timeInAt: lastSession.timeInAt,
-				timeOutAt: lastSession.timeOutAt,
-				branchId: lastSession.branchId,
-				duration: lastSession.duration,
-			};
-		}
-
-		// Simple overtime calculation (anything over 8 hours per day)
-		const dailyHours = new Map();
-		sessions.forEach((session) => {
-			const dayKey = session.timeInAt.toDate().toDateString();
-			const duration = session.duration || 0;
-			dailyHours.set(dayKey, (dailyHours.get(dayKey) || 0) + duration);
-		});
-
-		let totalOvertime = 0;
-		let weekOvertime = 0;
-		let monthOvertime = 0;
-
-		dailyHours.forEach((minutes, dayKey) => {
-			const hours = minutes / 60;
-			const overtime = Math.max(0, hours - 8); // Overtime after 8 hours
-
-			totalOvertime += overtime;
-
-			const date = new Date(dayKey);
-			if (date >= weekStart) {
-				weekOvertime += overtime;
-			}
-			if (date >= monthStart) {
-				monthOvertime += overtime;
-			}
-		});
-
-		stats.overtime = {
-			thisWeek: weekOvertime,
-			thisMonth: monthOvertime,
-			total: totalOvertime,
-		};
-
-		return stats;
-	};
-
-	const calculateStreaks = (
-		sortedDateStrings: string[]
-	): { currentStreak: number; longestStreak: number } => {
-		if (sortedDateStrings.length === 0) {
-			return { currentStreak: 0, longestStreak: 0 };
-		}
-
-		let currentStreak = 0;
-		let longestStreak = 0;
-		let tempStreak = 1;
-
-		const today = new Date().toDateString();
-		const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString();
-
-		// Calculate longest streak
-		for (let i = 1; i < sortedDateStrings.length; i++) {
-			const prevDate = new Date(sortedDateStrings[i - 1]);
-			const currDate = new Date(sortedDateStrings[i]);
-			const dayDiff = Math.abs(
-				(currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24)
-			);
-
-			if (dayDiff === 1) {
-				tempStreak++;
-			} else {
-				longestStreak = Math.max(longestStreak, tempStreak);
-				tempStreak = 1;
-			}
-		}
-		longestStreak = Math.max(longestStreak, tempStreak);
-
-		// Calculate current streak (must include today or yesterday)
-		const latestWorkDay = sortedDateStrings[sortedDateStrings.length - 1];
-		if (latestWorkDay === today || latestWorkDay === yesterday) {
-			let i = sortedDateStrings.length - 1;
-			currentStreak = 1;
-
-			while (i > 0) {
-				const prevDate = new Date(sortedDateStrings[i - 1]);
-				const currDate = new Date(sortedDateStrings[i]);
-				const dayDiff = Math.abs(
-					(currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24)
-				);
-
-				if (dayDiff === 1) {
-					currentStreak++;
-					i--;
-				} else {
-					break;
-				}
-			}
-		}
-
-		return { currentStreak, longestStreak };
-	};
-
-	const getBranchName = (branchId: string): string => {
-		const branch = allBranches.find((b) => b.id === branchId);
-		return branch ? branch.name : `Branch ${branchId}`;
-	};
-
-	const formatHours = (hours: number): string => {
-		const wholeHours = Math.floor(hours);
-		const minutes = Math.round((hours - wholeHours) * 60);
-		if (wholeHours === 0) {
-			return `${minutes}m`;
-		}
-		return minutes > 0 ? `${wholeHours}h ${minutes}m` : `${wholeHours}h`;
-	};
-
-	const getEfficiencyColor = (score: number): string => {
-		if (score >= 90) return "text-green-600";
-		if (score >= 70) return "text-yellow-600";
-		return "text-red-600";
-	};
-
-	const getEfficiencyBg = (score: number): string => {
-		if (score >= 90) return "bg-green-100";
-		if (score >= 70) return "bg-yellow-100";
-		return "bg-red-100";
-	};
+	useEffect(() => {
+		loadWorkerStats();
+	}, [loadWorkerStats]);
 
 	if (loading) {
 		return (
@@ -635,7 +358,7 @@ export default function WorkerStatsComponent({
 									className='flex items-center justify-between p-3 bg-gray-50 rounded-lg'>
 									<div>
 										<div className='font-medium text-gray-900'>
-											{getBranchName(branchStat.branchId)}
+											{getBranchName(branchStat.branchId, allBranches)}
 										</div>
 										<div className='text-sm text-gray-600'>
 											Last worked:{" "}
@@ -680,7 +403,7 @@ export default function WorkerStatsComponent({
 							<div>
 								<span className='text-gray-600'>Branch:</span>
 								<div className='font-semibold'>
-									{getBranchName(stats.lastSession.branchId)}
+									{getBranchName(stats.lastSession.branchId, allBranches)}
 								</div>
 							</div>
 							{stats.lastSession.duration && (
@@ -699,3 +422,281 @@ export default function WorkerStatsComponent({
 		</div>
 	);
 }
+
+const calculateWorkerStats = (
+	userId: string,
+	sessions: WorkSession[],
+	_allBranches: Branch[]
+): WorkerStats => {
+	// Initialize stats
+	const stats: WorkerStats = {
+		userId,
+		totalHoursWorked: 0,
+		totalSessions: sessions.length,
+		averageSessionDuration: 0,
+		currentStreak: 0,
+		longestStreak: 0,
+		thisWeek: {
+			hoursWorked: 0,
+			sessionsCount: 0,
+			daysWorked: 0,
+		},
+		thisMonth: {
+			hoursWorked: 0,
+			sessionsCount: 0,
+			daysWorked: 0,
+		},
+		branchStats: [],
+		overtime: {
+			thisWeek: 0,
+			thisMonth: 0,
+			total: 0,
+		},
+		attendance: {
+			punctualityScore: 0,
+			averageClockInDelay: 0,
+			missedShifts: 0,
+		},
+	};
+
+	if (sessions.length === 0) {
+		return stats;
+	}
+
+	// Calculate date boundaries
+	const now = new Date();
+	const weekStart = new Date(now);
+	weekStart.setDate(now.getDate() - now.getDay()); // Start of current week
+	weekStart.setHours(0, 0, 0, 0);
+
+	const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+	// Track totals and branch performance
+	const branchMap = new Map();
+	let totalMinutes = 0;
+	let onTimeCount = 0;
+	let totalDelayMinutes = 0;
+
+	// Track days worked for streaks
+	const workedDates = new Set();
+	const thisWeekDates = new Set();
+	const thisMonthDates = new Set();
+
+	sessions.forEach((session) => {
+		const sessionDate = session.timeInAt.toDate();
+		const dayKey = sessionDate.toDateString();
+		workedDates.add(dayKey);
+
+		// Calculate session duration
+		let duration = 0;
+		if (session.duration) {
+			duration = session.duration;
+		} else if (session.timeInAt && session.timeOutAt) {
+			const startTime = session.timeInAt.toDate();
+			const endTime = session.timeOutAt.toDate();
+			duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60); // minutes
+		}
+
+		totalMinutes += duration;
+		stats.totalHoursWorked += duration / 60;
+
+		// Track branch stats
+		if (!branchMap.has(session.branchId)) {
+			branchMap.set(session.branchId, {
+				branchId: session.branchId,
+				hoursWorked: 0,
+				sessionsCount: 0,
+				lastWorked: session.timeInAt,
+			});
+		}
+
+		const branchStat = branchMap.get(session.branchId);
+		branchStat.hoursWorked += duration / 60;
+		branchStat.sessionsCount++;
+
+		if (session.timeInAt.toDate() > branchStat.lastWorked.toDate()) {
+			branchStat.lastWorked = session.timeInAt;
+		}
+
+		// This week stats
+		if (sessionDate >= weekStart) {
+			stats.thisWeek.hoursWorked += duration / 60;
+			stats.thisWeek.sessionsCount++;
+			thisWeekDates.add(dayKey);
+		}
+
+		// This month stats
+		if (sessionDate >= monthStart) {
+			stats.thisMonth.hoursWorked += duration / 60;
+			stats.thisMonth.sessionsCount++;
+			thisMonthDates.add(dayKey);
+		}
+
+		// Punctuality calculation (on-time if within 15 minutes of hour)
+		const minutes = sessionDate.getMinutes();
+		if (minutes <= 15 || minutes >= 45) {
+			onTimeCount++;
+		} else {
+			// Calculate delay
+			const delay = minutes <= 30 ? minutes : 60 - minutes;
+			totalDelayMinutes += delay;
+		}
+	});
+
+	// Set calculated values
+	stats.thisWeek.daysWorked = thisWeekDates.size;
+	stats.thisMonth.daysWorked = thisMonthDates.size;
+	stats.branchStats = Array.from(branchMap.values());
+
+	// Average session duration
+	stats.averageSessionDuration =
+		sessions.length > 0 ? totalMinutes / sessions.length : 0;
+
+	// Punctuality score
+	stats.attendance.punctualityScore =
+		sessions.length > 0
+			? Math.round((onTimeCount / sessions.length) * 100)
+			: 0;
+
+	// Average delay
+	const lateSessionsCount = sessions.length - onTimeCount;
+	stats.attendance.averageClockInDelay =
+		lateSessionsCount > 0
+			? Math.round(totalDelayMinutes / lateSessionsCount)
+			: 0;
+
+	// Calculate streaks
+	const { currentStreak, longestStreak } = calculateStreaks(
+		Array.from(workedDates).sort() as string[]
+	);
+	stats.currentStreak = currentStreak;
+	stats.longestStreak = longestStreak;
+
+	// Set last session
+	if (sessions.length > 0) {
+		const lastSession = sessions[0]; // Sessions are ordered by timeInAt desc
+		stats.lastSession = {
+			timeInAt: lastSession.timeInAt,
+			timeOutAt: lastSession.timeOutAt,
+			branchId: lastSession.branchId,
+			duration: lastSession.duration,
+		};
+	}
+
+	// Simple overtime calculation (anything over 8 hours per day)
+	const dailyHours = new Map();
+	sessions.forEach((session) => {
+		const dayKey = session.timeInAt.toDate().toDateString();
+		const duration = session.duration || 0;
+		dailyHours.set(dayKey, (dailyHours.get(dayKey) || 0) + duration);
+	});
+
+	let totalOvertime = 0;
+	let weekOvertime = 0;
+	let monthOvertime = 0;
+
+	dailyHours.forEach((minutes, dayKey) => {
+		const hours = minutes / 60;
+		const overtime = Math.max(0, hours - 8); // Overtime after 8 hours
+
+		totalOvertime += overtime;
+
+		const date = new Date(dayKey);
+		if (date >= weekStart) {
+			weekOvertime += overtime;
+		}
+		if (date >= monthStart) {
+			monthOvertime += overtime;
+		}
+	});
+
+	stats.overtime = {
+		thisWeek: weekOvertime,
+		thisMonth: monthOvertime,
+		total: totalOvertime,
+	};
+
+	return stats;
+};
+
+const calculateStreaks = (
+	sortedDateStrings: string[]
+): { currentStreak: number; longestStreak: number } => {
+	if (sortedDateStrings.length === 0) {
+		return { currentStreak: 0, longestStreak: 0 };
+	}
+
+	let currentStreak = 0;
+	let longestStreak = 0;
+	let tempStreak = 1;
+
+	const today = new Date().toDateString();
+	const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString();
+
+	// Calculate longest streak
+	for (let i = 1; i < sortedDateStrings.length; i++) {
+		const prevDate = new Date(sortedDateStrings[i - 1]);
+		const currDate = new Date(sortedDateStrings[i]);
+		const dayDiff = Math.abs(
+			(currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24)
+		);
+
+		if (dayDiff === 1) {
+			tempStreak++;
+		} else {
+			longestStreak = Math.max(longestStreak, tempStreak);
+			tempStreak = 1;
+		}
+	}
+	longestStreak = Math.max(longestStreak, tempStreak);
+
+	// Calculate current streak (must include today or yesterday)
+	const latestWorkDay = sortedDateStrings[sortedDateStrings.length - 1];
+	if (latestWorkDay === today || latestWorkDay === yesterday) {
+		let i = sortedDateStrings.length - 1;
+		currentStreak = 1;
+
+		while (i > 0) {
+			const prevDate = new Date(sortedDateStrings[i - 1]);
+			const currDate = new Date(sortedDateStrings[i]);
+			const dayDiff = Math.abs(
+				(currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24)
+			);
+
+			if (dayDiff === 1) {
+				currentStreak++;
+				i--;
+			} else {
+				break;
+			}
+		}
+	}
+
+	return { currentStreak, longestStreak };
+};
+
+const getBranchName = (branchId: string, allBranches: Branch[]): string => {
+	const branch = allBranches.find((b) => b.id === branchId);
+	return branch ? branch.name : `Branch ${branchId}`;
+};
+
+const formatHours = (hours: number): string => {
+	const wholeHours = Math.floor(hours);
+	const minutes = Math.round((hours - wholeHours) * 60);
+	if (wholeHours === 0) {
+		return `${minutes}m`;
+	}
+	return minutes > 0 ? `${wholeHours}h ${minutes}m` : `${wholeHours}h`;
+};
+
+const getEfficiencyColor = (score: number): string => {
+	if (score >= 90) return "text-green-600";
+	if (score >= 70) return "text-yellow-600";
+	return "text-red-600";
+};
+
+const getEfficiencyBg = (score: number): string => {
+	if (score >= 90) return "bg-green-100";
+	if (score >= 70) return "bg-yellow-100";
+	return "bg-red-100";
+};

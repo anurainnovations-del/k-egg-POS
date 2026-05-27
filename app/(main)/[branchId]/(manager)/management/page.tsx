@@ -155,8 +155,8 @@ export default function ManagementPage() {
 			filtered = filtered.filter(w => w.name.toLowerCase().includes(s) || w.email.toLowerCase().includes(s));
 		}
 		return filtered.sort((a, b) => {
-			const aV = a[sortConfig.column as keyof Worker] as any;
-			const bV = b[sortConfig.column as keyof Worker] as any;
+			const aV = String(a[sortConfig.column as keyof Worker] ?? "");
+			const bV = String(b[sortConfig.column as keyof Worker] ?? "");
 			if (aV < bV) return sortConfig.direction === "asc" ? -1 : 1;
 			if (aV > bV) return sortConfig.direction === "asc" ? 1 : -1;
 			return 0;

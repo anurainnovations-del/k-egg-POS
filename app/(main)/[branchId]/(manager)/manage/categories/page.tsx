@@ -67,8 +67,8 @@ function CategoryModal({
       }
       onSave();
       onClose();
-    } catch (e: any) {
-      setError(e.message || "Failed to save category.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save category.");
     } finally {
       setSaving(false);
     }

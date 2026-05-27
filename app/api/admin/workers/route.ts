@@ -51,10 +51,11 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ userId: userRecord.uid }, { status: 201 });
-  } catch (error: any) {
-    console.error("❌ Error creating worker auth account:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("❌ Error creating worker auth account:", err);
     return NextResponse.json(
-      { error: error.message || "Failed to create worker" },
+      { error: err.message || "Failed to create worker" },
       { status: 500 }
     );
   }
@@ -94,10 +95,11 @@ export async function DELETE(req: NextRequest) {
     if (sessionsSnap.docs.length > 0) await batch.commit();
 
     return NextResponse.json({ success: true }, { status: 200 });
-  } catch (error: any) {
-    console.error("❌ Error deleting worker:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("❌ Error deleting worker:", err);
     return NextResponse.json(
-      { error: error.message || "Failed to delete worker" },
+      { error: err.message || "Failed to delete worker" },
       { status: 500 }
     );
   }

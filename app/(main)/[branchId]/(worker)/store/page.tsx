@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { MenuItem } from "@/services/menuItemService";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
 import { createOrder } from "@/services/orderService";
@@ -101,11 +101,15 @@ export default function StoreScreen() {
   // ── Helpers ──────────────────────────────────────────────────────────────────
   const menuCategories = categories.filter((c) => c.type === "menu");
 
-  const getCategoryName = (categoryId: string) =>
-    categories.find((c) => c.id === categoryId)?.name ?? "Uncategorised";
+  const getCategoryName = useCallback((categoryId: string) =>
+    categories.find((c) => c.id === categoryId)?.name ?? "Uncategorised",
+    [categories]
+  );
 
-  const getCategoryColor = (categoryId: string) =>
-    categories.find((c) => c.id === categoryId)?.color?.trim() ?? "transparent";
+  const getCategoryColor = useCallback((categoryId: string) =>
+    categories.find((c) => c.id === categoryId)?.color?.trim() ?? "transparent",
+    [categories]
+  );
 
   const getAvailableServings = (itemId: string): number => {
     const fromStore = availability.get(itemId) ?? 0;
@@ -113,19 +117,21 @@ export default function StoreScreen() {
     return Math.max(0, fromStore - inCart);
   };
 
-  const filteredItems = menuItems.filter((item) => {
-    if (!item.isAvailable) return false;
-    const maxServings = availability.get(item.id ?? "") ?? 0;
-    if (hideUnavailable && maxServings === 0) return false;
-    const matchSearch =
-      !searchQuery ||
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchCat =
-      selectedCategories.length === 0 ||
-      selectedCategories.includes(getCategoryName(item.categoryId));
-    return matchSearch && matchCat;
-  });
+  const filteredItems = useMemo(() => {
+    return menuItems.filter((item) => {
+      if (!item.isAvailable) return false;
+      const maxServings = availability.get(item.id ?? "") ?? 0;
+      if (hideUnavailable && maxServings === 0) return false;
+      const matchSearch =
+        !searchQuery ||
+        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchCat =
+        selectedCategories.length === 0 ||
+        selectedCategories.includes(getCategoryName(item.categoryId));
+      return matchSearch && matchCat;
+    });
+  }, [menuItems, availability, hideUnavailable, searchQuery, selectedCategories, getCategoryName]);
 
   // ── Cart operations ───────────────────────────────────────────────────────────
   const addToCart = (item: MenuItem) => {
@@ -524,7 +530,6 @@ export default function StoreScreen() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-2">
                 {filteredItems.map((item) => {
-                  const maxServings = availability.get(item.id ?? "") ?? 0;
                   const available = getAvailableServings(item.id ?? "");
                   const cartQty = cart.find((c) => c.id === item.id)?.quantity ?? 0;
 

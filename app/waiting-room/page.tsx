@@ -190,7 +190,7 @@ export default function WaitingRoomPage() {
                 <li>• Contact your store manager or administrator</li>
                 <li>• Provide them with your email address: <span className="font-medium">{user?.email}</span></li>
                 <li>• Ask them to assign you to a branch in the system</li>
-                <li>• Check back here or click "Check Access Status" periodically</li>
+                <li>• Check back here or click &quot;Check Access Status&quot; periodically</li>
                 <li>• You will be automatically redirected once access is granted</li>
               </ul>
             </div>

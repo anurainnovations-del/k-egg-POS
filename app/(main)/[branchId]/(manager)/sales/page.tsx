@@ -10,6 +10,7 @@ import {
 	Tooltip,
 	ResponsiveContainer,
 } from "recharts";
+import { Timestamp } from "firebase/firestore";
 import TopBar from "@/components/TopBar";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
 import { calculateDeductions } from "@/services/ingredientDeductionService";
@@ -58,10 +59,13 @@ export default function SalesScreen() {
 	const [voidingError, setVoidingError] = useState("");
 	const [isVoiding, setIsVoiding] = useState(false);
 	
-	const toDate = (date: any): Date => {
+	const toDate = (date: Timestamp | Date | string | null | undefined): Date => {
 		if (!date) return new Date(0);
-		if (date.toDate) return date.toDate();
-		return new Date(date);
+		if (date instanceof Timestamp) return date.toDate();
+		if (typeof date === "object" && "toDate" in date && typeof (date as { toDate: unknown }).toDate === "function") {
+			return (date as { toDate: () => Date }).toDate();
+		}
+		return new Date(date as string | Date);
 	};
 
 
@@ -214,7 +218,7 @@ export default function SalesScreen() {
 		}).sort((a, b) => b.quantityUsed - a.quantityUsed); // Sort by most consumed first
 	}, [allOrders, menuItems, ingredients, viewPeriod, getFilteredOrders, categories]);
 
-	const formatTooltipValue = (value: any, name: any) => {
+	const formatTooltipValue = (value: number | string, name: string): [string | number, string] => {
 		if (name === "revenue" || name === "profit") {
 			return [formatCurrency(Number(value)), name === "revenue" ? "Revenue" : "Profit"];
 		}
@@ -269,8 +273,8 @@ export default function SalesScreen() {
 
 			setVoidModalOpen(false);
 			setOrderToVoid(null);
-		} catch (err: any) {
-			setVoidingError(err.message || "Failed to void order");
+		} catch (err: unknown) {
+			setVoidingError(err instanceof Error ? err.message : "Failed to void order");
 		} finally {
 			setIsVoiding(false);
 		}
@@ -387,7 +391,8 @@ export default function SalesScreen() {
 											<YAxis stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
 											<Tooltip
 												contentStyle={{ backgroundColor: "#fff", borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
-												formatter={formatTooltipValue}
+												// eslint-disable-next-line @typescript-eslint/no-explicit-any
+												formatter={formatTooltipValue as any}
 											/>
 											<Line type='monotone' dataKey='revenue' stroke='var(--accent)' strokeWidth={3} dot={false} animationDuration={1000} />
 											<Line type='monotone' dataKey='profit' stroke='#10b981' strokeWidth={2} dot={false} strokeDasharray="5 5" />

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Worker } from "@/services/workerService";
 import { workSessionService, WorkSession } from "@/services/workSessionService";
 import { useAccessibleBranches } from "@/contexts/BranchContext";
 import { Timestamp } from "firebase/firestore";
+import { Branch } from "@/services/branchService";
 
 interface WorkerPerformanceProps {
 	worker: Worker;
@@ -45,11 +46,7 @@ export default function WorkerPerformanceAnalytics({
 	const [error, setError] = useState<string | null>(null);
 	const { allBranches } = useAccessibleBranches();
 
-	useEffect(() => {
-		loadPerformanceMetrics();
-	}, [worker.id, dateRange]);
-
-	const loadPerformanceMetrics = async () => {
+	const loadPerformanceMetrics = useCallback(async () => {
 		try {
 			setLoading(true);
 			setError(null);
@@ -67,7 +64,7 @@ export default function WorkerPerformanceAnalytics({
 				)) || [];
 
 			// Calculate performance metrics
-			const calculatedMetrics = calculatePerformanceMetrics(sessions);
+			const calculatedMetrics = calculatePerformanceMetrics(sessions, allBranches);
 			setMetrics(calculatedMetrics);
 		} catch (err: unknown) {
 			console.error("Error loading performance metrics:", err);
@@ -75,245 +72,11 @@ export default function WorkerPerformanceAnalytics({
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [worker.id, dateRange, allBranches]);
 
-	const calculatePerformanceMetrics = (sessions: WorkSession[]): PerformanceMetrics => {
-		// Basic calculations
-		const totalHours = sessions.reduce((sum, session) => {
-			if (session.duration) {
-				return sum + session.duration / 60; // Convert minutes to hours
-			}
-			if (session.timeInAt && session.timeOutAt) {
-				const startTime = session.timeInAt instanceof Timestamp
-					? session.timeInAt.toDate()
-					: session.timeInAt;
-				const endTime = session.timeOutAt instanceof Timestamp
-					? session.timeOutAt.toDate()
-					: session.timeOutAt;
-				return (
-					sum + (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)
-				);
-			}
-			return sum;
-		}, 0);
-
-		const averageSessionLength =
-			sessions.length > 0 ? totalHours / sessions.length : 0;
-
-		// Punctuality calculation (simplified - based on start times)
-		const punctualityScore = calculatePunctualityScore(sessions);
-
-		// Productivity trend (simplified)
-		const productivityTrend = calculateProductivityTrend(sessions);
-
-		// Branch performance
-		const branchPerformance = calculateBranchPerformance(sessions);
-
-		// Weekly breakdown
-		const weeklyBreakdown = calculateWeeklyBreakdown(sessions);
-
-		// Daily pattern
-		const dailyPattern = calculateDailyPattern(sessions);
-
-		return {
-			totalHours,
-			averageSessionLength,
-			punctualityScore,
-			productivityTrend,
-			branchPerformance,
-			weeklyBreakdown,
-			dailyPattern,
-		};
-	};
-
-	const calculatePunctualityScore = (sessions: WorkSession[]): number => {
-		// Simplified punctuality: assume on-time if clocked in within 15 minutes of hour
-		const punctualSessions = sessions.filter((session) => {
-			if (!session.timeInAt) return false;
-
-			const startTime = session.timeInAt instanceof Timestamp
-				? session.timeInAt.toDate()
-				: session.timeInAt;
-			const minutes = startTime.getMinutes();
-
-			// Consider on-time if within 15 minutes of the hour
-			return minutes <= 15 || minutes >= 45;
-		});
-
-		return sessions.length > 0
-			? Math.round((punctualSessions.length / sessions.length) * 100)
-			: 0;
-	};
-
-	const calculateProductivityTrend = (
-		sessions: any[]
-	): "up" | "down" | "stable" => {
-		if (sessions.length < 4) return "stable";
-
-		// Compare first half vs second half of sessions
-		const midpoint = Math.floor(sessions.length / 2);
-		const firstHalf = sessions.slice(0, midpoint);
-		const secondHalf = sessions.slice(midpoint);
-
-		const firstHalfAvg =
-			firstHalf.reduce((sum, session) => {
-				return sum + (session.duration || 0);
-			}, 0) / firstHalf.length;
-
-		const secondHalfAvg =
-			secondHalf.reduce((sum, session) => {
-				return sum + (session.duration || 0);
-			}, 0) / secondHalf.length;
-
-		const difference = secondHalfAvg - firstHalfAvg;
-		const threshold = 30; // 30 minutes threshold
-
-		if (difference > threshold) return "up";
-		if (difference < -threshold) return "down";
-		return "stable";
-	};
-
-	const calculateBranchPerformance = (sessions: WorkSession[]) => {
-		const branchMap = new Map();
-
-		sessions.forEach((session) => {
-			if (!branchMap.has(session.branchId)) {
-				branchMap.set(session.branchId, {
-					branchId: session.branchId,
-					branchName: getBranchName(session.branchId),
-					hours: 0,
-					sessions: 0,
-					lastWorked: null,
-				});
-			}
-
-			const branch = branchMap.get(session.branchId);
-			branch.sessions++;
-
-			if (session.duration) {
-				branch.hours += session.duration / 60;
-			}
-
-			const sessionDate = session.timeInAt.toDate
-				? session.timeInAt.toDate()
-				: session.timeInAt;
-			if (!branch.lastWorked || sessionDate > branch.lastWorked) {
-				branch.lastWorked = sessionDate;
-			}
-		});
-
-		return Array.from(branchMap.values());
-	};
-
-	const calculateWeeklyBreakdown = (sessions: WorkSession[]) => {
-		const weekMap = new Map();
-
-		sessions.forEach((session) => {
-			const sessionDate = session.timeInAt instanceof Timestamp
-				? session.timeInAt.toDate()
-				: session.timeInAt;
-			const weekStart = getWeekStart(sessionDate);
-			const weekKey = weekStart.toISOString().split("T")[0];
-
-			if (!weekMap.has(weekKey)) {
-				weekMap.set(weekKey, {
-					week: formatWeek(weekStart),
-					hours: 0,
-					sessions: 0,
-				});
-			}
-
-			const week = weekMap.get(weekKey);
-			week.sessions++;
-
-			if (session.duration) {
-				week.hours += session.duration / 60;
-			}
-		});
-
-		return Array.from(weekMap.values()).sort((a, b) =>
-			a.week.localeCompare(b.week)
-		);
-	};
-
-	const calculateDailyPattern = (sessions: WorkSession[]) => {
-		const dayMap = new Map();
-		const dayNames = [
-			"Sunday",
-			"Monday",
-			"Tuesday",
-			"Wednesday",
-			"Thursday",
-			"Friday",
-			"Saturday",
-		];
-
-		dayNames.forEach((day) => {
-			dayMap.set(day, {
-				day,
-				averageHours: 0,
-				sessionsCount: 0,
-			});
-		});
-
-		sessions.forEach((session) => {
-			const sessionDate = session.timeInAt instanceof Timestamp
-				? session.timeInAt.toDate()
-				: session.timeInAt;
-			const dayName = dayNames[sessionDate.getDay()];
-
-			const dayData = dayMap.get(dayName);
-			dayData.sessionsCount++;
-
-			if (session.duration) {
-				dayData.averageHours += session.duration / 60;
-			}
-		});
-
-		// Calculate averages
-		dayMap.forEach((dayData) => {
-			if (dayData.sessionsCount > 0) {
-				dayData.averageHours = dayData.averageHours / dayData.sessionsCount;
-			}
-		});
-
-		return Array.from(dayMap.values());
-	};
-
-	const getBranchName = (branchId: string): string => {
-		const branch = allBranches.find((b) => b.id === branchId);
-		return branch ? branch.name : branchId;
-	};
-
-	const getWeekStart = (date: Date): Date => {
-		const d = new Date(date);
-		const day = d.getDay();
-		const diff = d.getDate() - day;
-		return new Date(d.setDate(diff));
-	};
-
-	const formatWeek = (weekStart: Date): string => {
-		const weekEnd = new Date(weekStart);
-		weekEnd.setDate(weekEnd.getDate() + 6);
-		return `${weekStart.toLocaleDateString()} - ${weekEnd.toLocaleDateString()}`;
-	};
-
-	const formatHours = (hours: number): string => {
-		const wholeHours = Math.floor(hours);
-		const minutes = Math.round((hours - wholeHours) * 60);
-		return wholeHours > 0 ? `${wholeHours}h ${minutes}m` : `${minutes}m`;
-	};
-
-	const getTrendIcon = (trend: string) => {
-		switch (trend) {
-			case "up":
-				return <span className='text-green-600'>↗️ Improving</span>;
-			case "down":
-				return <span className='text-red-600'>↘️ Declining</span>;
-			default:
-				return <span className='text-gray-600'>→ Stable</span>;
-		}
-	};
+	useEffect(() => {
+		loadPerformanceMetrics();
+	}, [loadPerformanceMetrics]);
 
 	if (loading) {
 		return (
@@ -497,3 +260,227 @@ export default function WorkerPerformanceAnalytics({
 		</div>
 	);
 }
+
+const getWeekStart = (date: Date): Date => {
+	const d = new Date(date);
+	const day = d.getDay();
+	const diff = d.getDate() - day;
+	return new Date(d.setDate(diff));
+};
+
+const formatWeek = (weekStart: Date): string => {
+	const weekEnd = new Date(weekStart);
+	weekEnd.setDate(weekEnd.getDate() + 6);
+	return `${weekStart.toLocaleDateString()} - ${weekEnd.toLocaleDateString()}`;
+};
+
+const formatHours = (hours: number): string => {
+	const wholeHours = Math.floor(hours);
+	const minutes = Math.round((hours - wholeHours) * 60);
+	return wholeHours > 0 ? `${wholeHours}h ${minutes}m` : `${minutes}m`;
+};
+
+const getBranchName = (branchId: string, allBranches: Branch[]): string => {
+	const branch = allBranches.find((b) => b.id === branchId);
+	return branch ? branch.name : branchId;
+};
+
+const calculatePunctualityScore = (sessions: WorkSession[]): number => {
+	const punctualSessions = sessions.filter((session) => {
+		if (!session.timeInAt) return false;
+
+		const startTime = session.timeInAt instanceof Timestamp
+			? session.timeInAt.toDate()
+			: session.timeInAt;
+		const minutes = startTime.getMinutes();
+
+		return minutes <= 15 || minutes >= 45;
+	});
+
+	return sessions.length > 0
+		? Math.round((punctualSessions.length / sessions.length) * 100)
+		: 0;
+};
+
+const calculateProductivityTrend = (
+	sessions: WorkSession[]
+): "up" | "down" | "stable" => {
+	if (sessions.length < 4) return "stable";
+
+	const midpoint = Math.floor(sessions.length / 2);
+	const firstHalf = sessions.slice(0, midpoint);
+	const secondHalf = sessions.slice(midpoint);
+
+	const firstHalfAvg =
+		firstHalf.reduce((sum, session) => {
+			return sum + (session.duration || 0);
+		}, 0) / firstHalf.length;
+
+	const secondHalfAvg =
+		secondHalf.reduce((sum, session) => {
+			return sum + (session.duration || 0);
+		}, 0) / secondHalf.length;
+
+	const difference = secondHalfAvg - firstHalfAvg;
+	const threshold = 30; // 30 minutes threshold
+
+	if (difference > threshold) return "up";
+	if (difference < -threshold) return "down";
+	return "stable";
+};
+
+const calculateBranchPerformance = (sessions: WorkSession[], allBranches: Branch[]) => {
+	const branchMap = new Map();
+
+	sessions.forEach((session) => {
+		if (!branchMap.has(session.branchId)) {
+			branchMap.set(session.branchId, {
+				branchId: session.branchId,
+				branchName: getBranchName(session.branchId, allBranches),
+				hours: 0,
+				sessions: 0,
+				lastWorked: null,
+			});
+		}
+
+		const branch = branchMap.get(session.branchId);
+		branch.sessions++;
+
+		if (session.duration) {
+			branch.hours += session.duration / 60;
+		}
+
+		const sessionDate = session.timeInAt instanceof Timestamp
+			? session.timeInAt.toDate()
+			: session.timeInAt;
+		if (!branch.lastWorked || sessionDate > branch.lastWorked) {
+			branch.lastWorked = sessionDate;
+		}
+	});
+
+	return Array.from(branchMap.values());
+};
+
+const calculateWeeklyBreakdown = (sessions: WorkSession[]) => {
+	const weekMap = new Map();
+
+	sessions.forEach((session) => {
+		const sessionDate = session.timeInAt instanceof Timestamp
+			? session.timeInAt.toDate()
+			: session.timeInAt;
+		const weekStart = getWeekStart(sessionDate);
+		const weekKey = weekStart.toISOString().split("T")[0];
+
+		if (!weekMap.has(weekKey)) {
+			weekMap.set(weekKey, {
+				week: formatWeek(weekStart),
+				hours: 0,
+				sessions: 0,
+			});
+		}
+
+		const week = weekMap.get(weekKey);
+		week.sessions++;
+
+		if (session.duration) {
+			week.hours += session.duration / 60;
+		}
+	});
+
+	return Array.from(weekMap.values()).sort((a, b) =>
+		a.week.localeCompare(b.week)
+	);
+};
+
+const calculateDailyPattern = (sessions: WorkSession[]) => {
+	const dayMap = new Map();
+	const dayNames = [
+		"Sunday",
+		"Monday",
+		"Tuesday",
+		"Wednesday",
+		"Thursday",
+		"Friday",
+		"Saturday",
+	];
+
+	dayNames.forEach((day) => {
+		dayMap.set(day, {
+			day,
+			averageHours: 0,
+			sessionsCount: 0,
+		});
+	});
+
+	sessions.forEach((session) => {
+		const sessionDate = session.timeInAt instanceof Timestamp
+			? session.timeInAt.toDate()
+			: session.timeInAt;
+		const dayName = dayNames[sessionDate.getDay()];
+
+		const dayData = dayMap.get(dayName);
+		dayData.sessionsCount++;
+
+		if (session.duration) {
+			dayData.averageHours += session.duration / 60;
+		}
+	});
+
+	dayMap.forEach((dayData) => {
+		if (dayData.sessionsCount > 0) {
+			dayData.averageHours = dayData.averageHours / dayData.sessionsCount;
+		}
+	});
+
+	return Array.from(dayMap.values());
+};
+
+const calculatePerformanceMetrics = (sessions: WorkSession[], allBranches: Branch[]): PerformanceMetrics => {
+	const totalHours = sessions.reduce((sum, session) => {
+		if (session.duration) {
+			return sum + session.duration / 60;
+		}
+		if (session.timeInAt && session.timeOutAt) {
+			const startTime = session.timeInAt instanceof Timestamp
+				? session.timeInAt.toDate()
+				: session.timeInAt;
+			const endTime = session.timeOutAt instanceof Timestamp
+				? session.timeOutAt.toDate()
+				: session.timeOutAt;
+			return (
+				sum + (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)
+			);
+		}
+		return sum;
+	}, 0);
+
+	const averageSessionLength =
+		sessions.length > 0 ? totalHours / sessions.length : 0;
+
+	const punctualityScore = calculatePunctualityScore(sessions);
+	const productivityTrend = calculateProductivityTrend(sessions);
+	const branchPerformance = calculateBranchPerformance(sessions, allBranches);
+	const weeklyBreakdown = calculateWeeklyBreakdown(sessions);
+	const dailyPattern = calculateDailyPattern(sessions);
+
+	return {
+		totalHours,
+		averageSessionLength,
+		punctualityScore,
+		productivityTrend,
+		branchPerformance,
+		weeklyBreakdown,
+		dailyPattern,
+	};
+};
+
+const getTrendIcon = (trend: string) => {
+	switch (trend) {
+		case "up":
+			return <span className='text-green-600'>↗️ Improving</span>;
+		case "down":
+			return <span className='text-red-600'>↘️ Declining</span>;
+		default:
+			return <span className='text-gray-600'>→ Stable</span>;
+	}
+};

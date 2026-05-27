@@ -2,6 +2,19 @@
 
 import { useEffect } from "react";
 
+type NextData = {
+	buildId?: string;
+};
+
+const getBuildId = (): string => {
+	if (typeof window === "undefined") return "dev";
+	const nextData = (window as Window & { __NEXT_DATA__?: NextData })
+		.__NEXT_DATA__;
+	return typeof nextData?.buildId === "string" && nextData.buildId.length > 0
+		? nextData.buildId
+		: "dev";
+};
+
 export default function PWARegistration() {
 	useEffect(() => {
 		if (
@@ -13,7 +26,11 @@ export default function PWARegistration() {
 		}
 
 		const registerServiceWorker = () => {
-			void navigator.serviceWorker.register("/sw.js");
+			const buildId = getBuildId();
+			const swUrl = `/sw.js?buildId=${encodeURIComponent(buildId)}`;
+			void navigator.serviceWorker.register(swUrl, {
+				updateViaCache: "none",
+			});
 		};
 
 		if (document.readyState === "complete") {

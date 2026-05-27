@@ -300,11 +300,11 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
     setBluetoothStatus(`Connected to: ${device.name || 'Unknown Printer'} - Ready for printing`);
   };
 
-  const tryAutoReconnect = async () => {
-    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+  const tryAutoReconnect = async (silent = false): Promise<boolean> => {
+    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return false;
     
     const savedPrinter = localStorage.getItem('connectedPrinter');
-    if (!savedPrinter) return;
+    if (!savedPrinter) return false;
 
     let printerInfo;
     try {
@@ -312,31 +312,45 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
     } catch (parseError) {
       console.error('Failed to parse saved printer info:', parseError);
       localStorage.removeItem('connectedPrinter');
-      return;
+      return false;
     }
 
     try {
-      setBluetoothStatus(`Attempting to reconnect to ${printerInfo.name}...`);
+      if (!silent) {
+        setBluetoothStatus(`Attempting to reconnect to ${printerInfo.name}...`);
+      }
       
       const devices = await navigator.bluetooth.getDevices();
       const savedDevice = devices.find((device: BluetoothDevice) => device.id === printerInfo.id);
       
       if (savedDevice && savedDevice.gatt) {
         try {
+          if (savedDevice.gatt.connected) {
+            await setupBluetoothDevice(savedDevice);
+            return true;
+          }
           await savedDevice.gatt.connect();
           await setupBluetoothDevice(savedDevice);
           console.log('Auto-reconnected to saved printer');
+          return true;
         } catch (connectError) {
           console.log('Auto-reconnect failed:', connectError);
-          setBluetoothStatus(`${printerInfo.name} found but connection failed. Click to reconnect.`);
+          if (!silent) {
+            setBluetoothStatus(`${printerInfo.name} found but connection failed. Click to reconnect.`);
+          }
         }
       } else {
-        setBluetoothStatus(`${printerInfo.name} not available. Click to reconnect.`);
+        if (!silent) {
+          setBluetoothStatus(`${printerInfo.name} not available. Click to reconnect.`);
+        }
       }
     } catch (error) {
       console.log('Auto-reconnect error:', error);
-      setBluetoothStatus(`Bluetooth reconnect failed. Click to reconnect.`);
+      if (!silent) {
+        setBluetoothStatus(`Bluetooth reconnect failed. Click to reconnect.`);
+      }
     }
+    return false;
   };
 
   const connectToBluetoothPrinter = async () => {
@@ -646,6 +660,8 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
     return await printReceipt(kickCommand);
   };
 
+  const [shouldAutoReconnect, setShouldAutoReconnect] = useState(false);
+
   // Auto-reconnect on context initialization
   useEffect(() => {
     if (printerType === 'bluetooth') {
@@ -653,7 +669,25 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
     }
   }, [printerType]);
 
-  // Monitor physical connection drops
+  // Tab focus / PWA maximize auto-reconnect trigger (native feel on close/open)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && printerType === 'bluetooth' && !bluetoothDevice) {
+        console.log('🔌 [BluetoothContext] App resumed/focused, checking auto-reconnect...');
+        tryAutoReconnect(true); // Attempt silent reconnect
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, [printerType, bluetoothDevice]);
+
+  // Monitor physical connection drops and trigger retry loop
   useEffect(() => {
     if (!bluetoothDevice) return;
 
@@ -663,7 +697,8 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
       
       const savedPrinter = localStorage.getItem('connectedPrinter');
       if (savedPrinter) {
-        setBluetoothStatus('Printer disconnected. Click to reconnect.');
+        setBluetoothStatus('Printer disconnected. Attempting to reconnect...');
+        setShouldAutoReconnect(true); // Trigger the background retry loop
       } else {
         setBluetoothStatus('Disconnected');
       }
@@ -675,6 +710,23 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
       bluetoothDevice.removeEventListener('gattserverdisconnected', handleDisconnection);
     };
   }, [bluetoothDevice]);
+
+  // Background retry reconnection loop (runs every 6 seconds)
+  useEffect(() => {
+    if (!shouldAutoReconnect || printerType !== 'bluetooth' || bluetoothDevice) {
+      return;
+    }
+
+    const intervalId = setInterval(async () => {
+      console.log('🔄 [BluetoothContext] Background reconnect retry...');
+      const success = await tryAutoReconnect(true); // Try silently
+      if (success) {
+        setShouldAutoReconnect(false);
+      }
+    }, 6000);
+
+    return () => clearInterval(intervalId);
+  }, [shouldAutoReconnect, printerType, bluetoothDevice]);
 
   const value: BluetoothContextType = {
     bluetoothDevice,

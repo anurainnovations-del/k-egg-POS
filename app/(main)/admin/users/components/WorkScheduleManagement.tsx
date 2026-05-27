@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Worker } from "@/services/workerService";
 import { workSessionService } from "@/services/workSessionService";
 import { useAccessibleBranches } from "@/contexts/BranchContext";
+import { Timestamp } from "firebase/firestore";
 
 interface WorkScheduleTarget {
 	workerId: string;
@@ -206,9 +207,9 @@ export default function WorkScheduleManagement({
 			if (stored) {
 				setScheduleTargets(JSON.parse(stored));
 			}
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Error loading schedule targets:", err);
-			setError(err.message || "Failed to load schedule targets");
+			setError(err instanceof Error ? err.message : "Failed to load schedule targets");
 		} finally {
 			setLoading(false);
 		}
@@ -264,9 +265,9 @@ export default function WorkScheduleManagement({
 				preferredShiftEnd: "17:00",
 				isActive: true,
 			});
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Error saving schedule target:", err);
-			setError(err.message || "Failed to save schedule target");
+			setError(err instanceof Error ? err.message : "Failed to save schedule target");
 		} finally {
 			setLoading(false);
 		}
@@ -282,9 +283,9 @@ export default function WorkScheduleManagement({
 				"workScheduleTargets",
 				JSON.stringify(updatedTargets)
 			);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Error deleting schedule target:", err);
-			setError(err.message || "Failed to delete schedule target");
+			setError(err instanceof Error ? err.message : "Failed to delete schedule target");
 		}
 	};
 
@@ -305,8 +306,8 @@ export default function WorkScheduleManagement({
 
 			const sessions =
 				(await workSessionService.listWorkSessions(target.workerId, {
-					startDate: startDate as any,
-					endDate: endDate as any,
+					startDate: Timestamp.fromDate(startDate),
+					endDate: Timestamp.fromDate(endDate),
 				})) || [];
 
 			const branchSessions = sessions.filter(
@@ -318,11 +319,11 @@ export default function WorkScheduleManagement({
 					return sum + session.duration / 60;
 				}
 				if (session.timeInAt && session.timeOutAt) {
-					const startTime = (session.timeInAt as any).toDate
-						? (session.timeInAt as any).toDate()
+					const startTime = session.timeInAt instanceof Timestamp
+						? session.timeInAt.toDate()
 						: session.timeInAt;
-					const endTime = (session.timeOutAt as any).toDate
-						? (session.timeOutAt as any).toDate()
+					const endTime = session.timeOutAt instanceof Timestamp
+						? session.timeOutAt.toDate()
 						: session.timeOutAt;
 					return (
 						sum + (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)

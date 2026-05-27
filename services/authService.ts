@@ -1,4 +1,4 @@
-import { RoleAssignment } from "@/contexts/AuthContext";
+import type { RoleAssignment } from "@/contexts/AuthContext";
 import { 
 	doc, 
 	Timestamp, 

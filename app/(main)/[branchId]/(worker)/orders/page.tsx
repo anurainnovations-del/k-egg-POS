@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Timestamp } from "firebase/firestore";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
@@ -12,6 +13,21 @@ import MobileTopBar from "@/components/MobileTopBar";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SalesIcon from "@/components/icons/SidebarNav/SalesIcon";
 import SearchIcon from "@/components/icons/SearchIcon";
+
+function parseFirestoreDate(date: unknown): Date {
+	if (!date) return new Date();
+	if (date instanceof Timestamp) {
+		return date.toDate();
+	}
+	if (typeof date === "object" && "toDate" in date && typeof (date as { toDate: unknown }).toDate === "function") {
+		return (date as { toDate: () => Date }).toDate();
+	}
+	if (typeof date === "object" && "seconds" in date) {
+		const raw = date as unknown as { seconds: number; nanoseconds?: number };
+		return new Timestamp(raw.seconds, raw.nanoseconds ?? 0).toDate();
+	}
+	return new Date(date as string | number | Date);
+}
 
 export default function WorkerOrdersPage() {
 	const { currentBranch } = useBranch();
@@ -25,7 +41,6 @@ export default function WorkerOrdersPage() {
 	// Voiding state
 	const [orderToVoid, setOrderToVoid] = useState<Order | null>(null);
 	const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
-	const [isVoiding, setIsVoiding] = useState(false);
 
 	// Get today's orders
 	const todaysOrders = useMemo(() => {
@@ -34,7 +49,7 @@ export default function WorkerOrdersPage() {
 
 		return allOrders.filter(order => {
 			if (!order.createdAt) return false;
-			const orderDate = (order.createdAt as any).toDate ? (order.createdAt as any).toDate() : new Date(order.createdAt as any);
+			const orderDate = parseFirestoreDate(order.createdAt);
 			return orderDate >= today;
 		});
 	}, [allOrders]);
@@ -56,7 +71,6 @@ export default function WorkerOrdersPage() {
 	const executeVoid = async () => {
 		if (!currentBranch || !orderToVoid) return;
 		
-		setIsVoiding(true);
 		try {
 			const workerName = user?.email?.split('@')[0] || "Unknown";
 			await voidOrder(currentBranch.id, orderToVoid.id, workerName);
@@ -65,8 +79,6 @@ export default function WorkerOrdersPage() {
 			setIsOverrideModalOpen(false);
 		} catch (error) {
 			console.error("Failed to void order:", error);
-		} finally {
-			setIsVoiding(false);
 		}
 	};
 
@@ -100,7 +112,7 @@ export default function WorkerOrdersPage() {
 			<div className='flex-1 overflow-y-auto px-6 py-4 space-y-4'>
 				<div className='bg-[var(--primary)] rounded-xl shadow-md border border-[var(--border)] overflow-hidden'>
 					<div className='p-6 border-b border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-4'>
-						<h3 className='text-lg font-bold text-[var(--secondary)]'>Today's Orders</h3>
+						<h3 className='text-lg font-bold text-[var(--secondary)]'>Today&apos;s Orders</h3>
 						<div className='relative max-w-sm w-full'>
 							<input
 								type='text'
@@ -139,7 +151,7 @@ export default function WorkerOrdersPage() {
 												{order.status === 'VOIDED' && <span className="ml-2 text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded uppercase">Voided</span>}
 											</td>
 											<td className='px-6 py-4 whitespace-nowrap text-xs text-gray-600'>
-												{order.createdAt ? ((order.createdAt as any).toDate ? (order.createdAt as any).toDate() : new Date(order.createdAt as any)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "—"}
+												{order.createdAt ? parseFirestoreDate(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "—"}
 											</td>
 											<td className='px-6 py-4 text-xs text-gray-600 max-w-xs truncate'>
 												{order.status === 'VOIDED' ? <span className="line-through">{order.items.map(it => it.name).join(", ")}</span> : order.items.map(it => it.name).join(", ")}
@@ -175,7 +187,6 @@ export default function WorkerOrdersPage() {
 				isOpen={isOverrideModalOpen}
 				onClose={() => {
 					setIsOverrideModalOpen(false);
-					setIsVoiding(false);
 				}}
 				onSuccess={executeVoid}
 				actionName={`Void order #${orderToVoid?.id?.slice(-6).toUpperCase()}`}

@@ -1,15 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Ingredient } from "@/services/ingredientService";
-import { subscribeToIngredients, subscribeToCategories } from "@/stores/dataStore";
-import { Category } from "@/services/categoryService";
 import { useBranch } from "@/contexts/BranchContext";
 import TopBar from "@/components/TopBar";
 import MobileTopBar from "@/components/MobileTopBar";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import IngredientsIcon from "@/components/icons/SidebarNav/IngredientsIcon";
-import { formatCurrency } from "@/lib/currency_formatter";
 import ManagerOverrideModal from "@/components/ManagerOverrideModal";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
 import { ingredientService } from "@/services/ingredientService";

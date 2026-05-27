@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import React, { useState, useEffect, useCallback } from "react";
+import { useAuth, RoleAssignment } from "@/contexts/AuthContext";
 import { useTimeTracking } from "@/contexts/TimeTrackingContext";
 import { branchService, Branch } from "@/services/branchService";
 
@@ -17,9 +17,18 @@ export default function POSTimeTracking({
 	const [loading, setLoading] = useState(false);
 	const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
 
+	const loadBranchData = useCallback(async () => {
+		try {
+			const branch = await branchService.getBranchById(currentBranchId);
+			setCurrentBranch(branch);
+		} catch (err: unknown) {
+			console.error("Error loading branch data:", err);
+		}
+	}, [currentBranchId]);
+
 	useEffect(() => {
 		loadBranchData();
-	}, [currentBranchId]);
+	}, [loadBranchData]);
 
 	useEffect(() => {
 		// Notify parent component when status changes
@@ -27,15 +36,6 @@ export default function POSTimeTracking({
 			onStatusChange(timeTracking.isWorking);
 		}
 	}, [timeTracking.isWorking, onStatusChange]);
-
-	const loadBranchData = async () => {
-		try {
-			const branch = await branchService.getBranchById(currentBranchId);
-			setCurrentBranch(branch);
-		} catch (err: any) {
-			console.error("Error loading branch data:", err);
-		}
-	};
 
 	const handleTimeIn = async () => {
 		if (!user || !timeTracking.worker) return;
@@ -47,7 +47,7 @@ export default function POSTimeTracking({
 				currentBranchId,
 				`Self time-in at POS - ${currentBranch?.name || "Unknown Branch"}`
 			);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Error timing in:", err);
 			// Error is already handled by the timeTracking hook
 		} finally {
@@ -64,7 +64,7 @@ export default function POSTimeTracking({
 			await timeTracking.clockOut(
 				`Self time-out at POS - ${currentBranch?.name || "Unknown Branch"}`
 			);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Error timing out:", err);
 			// Error is already handled by the timeTracking hook
 		} finally {
@@ -88,7 +88,7 @@ export default function POSTimeTracking({
 
 	// Check if worker has access to this branch
 	const hasAccessToBranch = timeTracking.worker.roleAssignments.some(
-		(assignment: any) =>
+		(assignment: RoleAssignment) =>
 			assignment.branchId === currentBranchId && assignment.isActive
 	);
 

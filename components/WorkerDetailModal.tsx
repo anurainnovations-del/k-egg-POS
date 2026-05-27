@@ -73,16 +73,18 @@ export default function WorkerDetailModal({
 		}
 	}, [isOpen, worker, loadWorkerSessions]);
 
-	const formatDate = (date: any) => {
+	const formatDate = (date: unknown) => {
 		if (!date) return "N/A";
-		const dateObj = date.toDate ? date.toDate() : date;
+		const dateObj = date && typeof date === "object" && "toDate" in date && typeof (date as { toDate: unknown }).toDate === "function"
+			? (date as { toDate: () => Date }).toDate()
+			: (date as Date | string | number);
 		return new Intl.DateTimeFormat("en-US", {
 			year: "numeric",
 			month: "short",
 			day: "numeric",
 			hour: "2-digit",
 			minute: "2-digit",
-		}).format(dateObj);
+		}).format(new Date(dateObj));
 	};
 
 	const formatDuration = (minutes: number) => {

@@ -237,7 +237,15 @@ export default function ManagerIngredientsPage() {
     if (selectedIng) {
       await ingredientService.updateIngredient(currentBranch.id, selectedIng.id!, data, performer);
     } else {
-      const { id: _id, branchId: _branchId, createdAt: _createdAt, updatedAt: _updatedAt, ...ingData } = data as any;
+      const ingData: Omit<Ingredient, "id" | "branchId" | "createdAt" | "updatedAt"> = {
+        name: data.name || "",
+        unit: data.unit || "pcs",
+        stock: data.stock !== undefined ? data.stock : 0,
+        lowStockThreshold: data.lowStockThreshold !== undefined ? data.lowStockThreshold : 10,
+        costPerUnit: data.costPerUnit !== undefined ? data.costPerUnit : 0,
+        categoryId: data.categoryId || "",
+        imgUrl: data.imgUrl,
+      };
       await ingredientService.addIngredient(currentBranch.id, ingData, performer);
     }
   };

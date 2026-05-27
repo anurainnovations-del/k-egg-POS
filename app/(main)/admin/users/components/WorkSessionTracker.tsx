@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { workSessionService, WorkSession } from "@/services/workSessionService";
 import { workerService, Worker } from "@/services/workerService";
 import { branchService, Branch } from "@/services/branchService";
+import { Timestamp } from "firebase/firestore";
 
 interface WorkSessionTrackerProps {
 	branchId?: string;
@@ -18,11 +20,7 @@ export default function WorkSessionTracker({
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
-	useEffect(() => {
-		loadActiveSessions();
-	}, [branchId, refreshTrigger]);
-
-	const loadActiveSessions = async () => {
+	const loadActiveSessions = useCallback(async () => {
 		try {
 			setLoading(true);
 			setError(null);
@@ -51,17 +49,21 @@ export default function WorkSessionTracker({
 			);
 
 			setActiveSessions(enrichedSessions);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Error loading active sessions:", err);
-			setError(err.message || "Failed to load active sessions");
+			setError(err instanceof Error ? err.message : "Failed to load active sessions");
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [branchId]);
 
-	const calculateCurrentDuration = (timeInAt: any): string => {
+	useEffect(() => {
+		loadActiveSessions();
+	}, [loadActiveSessions, refreshTrigger]);
+
+	const calculateCurrentDuration = (timeInAt: Timestamp | Date): string => {
 		const now = new Date();
-		const timeInDate = timeInAt.toDate ? timeInAt.toDate() : timeInAt;
+		const timeInDate = timeInAt instanceof Timestamp ? timeInAt.toDate() : timeInAt;
 		const diffMs = now.getTime() - timeInDate.getTime();
 		const diffMins = Math.floor(diffMs / (1000 * 60));
 		const hours = Math.floor(diffMins / 60);
@@ -73,8 +75,8 @@ export default function WorkSessionTracker({
 		return `${minutes}m`;
 	};
 
-	const formatTime = (date: any): string => {
-		const dateObj = date.toDate ? date.toDate() : date;
+	const formatTime = (date: Timestamp | Date): string => {
+		const dateObj = date instanceof Timestamp ? date.toDate() : date;
 		return new Intl.DateTimeFormat("en-US", {
 			hour: "2-digit",
 			minute: "2-digit",
@@ -219,10 +221,13 @@ export default function WorkSessionTracker({
 								<div className='flex items-center space-x-4'>
 									{/* Worker Avatar */}
 									{session.worker.profilePicture ? (
-										<img
+										<Image
 											src={session.worker.profilePicture}
 											alt=''
+											width={40}
+											height={40}
 											className='w-10 h-10 rounded-full'
+											unoptimized
 										/>
 									) : (
 										<div className='w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center'>
@@ -290,8 +295,8 @@ export default function WorkSessionTracker({
 										? Math.round(
 												activeSessions.reduce((acc, session) => {
 													const now = new Date();
-													const timeInDate = (session.timeInAt as any).toDate
-														? (session.timeInAt as any).toDate()
+													const timeInDate = session.timeInAt instanceof Timestamp
+														? session.timeInAt.toDate()
 														: session.timeInAt;
 													const diffMs = now.getTime() - timeInDate.getTime();
 													return acc + diffMs / (1000 * 60);

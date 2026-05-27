@@ -70,8 +70,9 @@ export default function TopBar({
 				}
 				await timeTracking.clockIn(branchId, "Clock-in from TopBar");
 			}
-		} catch (error: any) {
-			alert(error.message || "Time tracking failed");
+		} catch (error: unknown) {
+			const err = error as Error;
+			alert(err.message || "Time tracking failed");
 		} finally {
 			setIsTimeTracking(false);
 		}

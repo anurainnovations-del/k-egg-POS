@@ -190,13 +190,7 @@ export default function WorkersPage() {
 		}
 	}, [filters, selectedBranchId]);
 
-	// Load data only after auth loading is complete
-	useEffect(() => {
-		if (!authLoading && user && hasWorkerManagementAccess()) {
-			loadWorkers();
-			loadBranches();
-		}
-	}, [user, hasWorkerManagementAccess, filters, selectedBranchId, authLoading]);
+
 
 	// Cleanup subscriptions on unmount
 	useEffect(() => {
@@ -207,7 +201,7 @@ export default function WorkersPage() {
 		};
 	}, []);
 
-	const loadWorkers = async () => {
+	const loadWorkers = useCallback(async () => {
 		try {
 			setLoading(true);
 
@@ -219,10 +213,13 @@ export default function WorkersPage() {
 					workerFilters.branchId = selectedBranchId;
 				}
 			} else {
-				// Non-admin users can only see workers from their accessible branches
-				const accessibleBranches = getAccessibleBranches();
+				// Non-admin: derive accessible branches directly from user.roleAssignments
+				// (avoids depending on unstable getAccessibleBranches function ref)
+				const accessibleBranches = (user?.roleAssignments ?? [])
+					.filter((a) => a.role === "manager" && a.isActive !== false)
+					.map((a) => a.branchId);
 				if (accessibleBranches.length > 0) {
-					workerFilters.branchId = accessibleBranches[0]; // For now, filter by first branch
+					workerFilters.branchId = accessibleBranches[0];
 				}
 			}
 
@@ -241,16 +238,40 @@ export default function WorkersPage() {
 		} finally {
 			setLoading(false);
 		}
-	};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [filters, selectedBranchId, user, setupWorkerSubscriptions]);
+	// Note: getAccessibleBranches intentionally omitted — it is an unstable
+	// function ref from AuthContext (not useCallback-wrapped) and is derived
+	// purely from user.roleAssignments, which IS a dependency.
 
-	const loadBranches = async () => {
+	const loadBranches = useCallback(async () => {
 		try {
 			const branchesData = await branchService.getAllBranches();
 			setBranches(branchesData);
 		} catch (err) {
 			console.error("Error loading branches:", err);
 		}
-	};
+	}, []);
+
+	// Load data only after auth loading is complete
+	useEffect(() => {
+		if (!authLoading && user) {
+			if (hasWorkerManagementAccess()) {
+				loadWorkers();
+				loadBranches();
+			} else {
+				// No access — stop the loading spinner
+				setLoading(false);
+			}
+		} else if (!authLoading && !user) {
+			setLoading(false);
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [user, authLoading, loadWorkers, loadBranches]);
+	// Note: hasWorkerManagementAccess is intentionally omitted — it is an
+	// unstable function ref (not useCallback-wrapped in AuthContext) that
+	// would cause an infinite re-render loop. It is purely derived from
+	// `user`, which IS a dependency.
 
 	const handleCreateWorker = () => {
 		setSelectedWorker(null);
@@ -435,39 +456,35 @@ export default function WorkersPage() {
 						<div className='flex bg-gray-100 rounded-lg p-1'>
 							<button
 								onClick={() => setViewMode("workers")}
-								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-									viewMode === "workers"
-										? "bg-white text-gray-900 shadow-sm"
-										: "text-gray-600 hover:text-gray-900"
-								}`}>
+								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "workers"
+									? "bg-white text-gray-900 shadow-sm"
+									: "text-gray-600 hover:text-gray-900"
+									}`}>
 								Workers
 							</button>
-							
+
 							<button
 								onClick={() => setViewMode("analytics")}
-								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-									viewMode === "analytics"
-										? "bg-white text-gray-900 shadow-sm"
-										: "text-gray-600 hover:text-gray-900"
-								}`}>
+								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "analytics"
+									? "bg-white text-gray-900 shadow-sm"
+									: "text-gray-600 hover:text-gray-900"
+									}`}>
 								Analytics
 							</button>
 							<button
 								onClick={() => setViewMode("schedule")}
-								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-									viewMode === "schedule"
-										? "bg-white text-gray-900 shadow-sm"
-										: "text-gray-600 hover:text-gray-900"
-								}`}>
+								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "schedule"
+									? "bg-white text-gray-900 shadow-sm"
+									: "text-gray-600 hover:text-gray-900"
+									}`}>
 								Schedule
 							</button>
 							<button
 								onClick={() => setViewMode("attendance")}
-								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-									viewMode === "attendance"
-										? "bg-white text-gray-900 shadow-sm"
-										: "text-gray-600 hover:text-gray-900"
-								}`}>
+								className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "attendance"
+									? "bg-white text-gray-900 shadow-sm"
+									: "text-gray-600 hover:text-gray-900"
+									}`}>
 								Attendance
 							</button>
 						</div>
@@ -551,9 +568,9 @@ export default function WorkersPage() {
 					/* Analytics View */
 					<AdvancedReporting workers={workers} />
 				) : viewMode === "attendance" ? (
-					<AttendanceTable 
-						branchId={selectedBranchId} 
-						workers={workers} 
+					<AttendanceTable
+						branchId={selectedBranchId}
+						workers={workers}
 						branches={branches}
 						loading={loading}
 					/>

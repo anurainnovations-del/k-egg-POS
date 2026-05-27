@@ -50,9 +50,11 @@ export default function EditWorkerModal({
 	const [originalRole, setOriginalRole] = useState<"manager" | "worker" | null>(null);
 
 	// Get available branches based on user permissions
-	const availableBranches = isAdmin
-		? branches
-		: branches.filter((branch) => userAccessibleBranches.includes(branch.id));
+	const availableBranches = React.useMemo(() => {
+		return isAdmin
+			? branches
+			: branches.filter((branch) => userAccessibleBranches.includes(branch.id));
+	}, [isAdmin, branches, userAccessibleBranches]);
 
 	// Check if the current user can change roles for this worker
 	const canDemoteWorker = (worker: Worker | null): boolean => {
@@ -152,7 +154,7 @@ export default function EditWorkerModal({
 
 			setError(null);
 		}
-	}, [worker, isOpen, isAdmin, branches, userAccessibleBranches]);
+	}, [worker, isOpen, isAdmin, branches, userAccessibleBranches, availableBranches]);
 
 	// Debug logging for render conditions
 	useEffect(() => {
@@ -165,7 +167,7 @@ export default function EditWorkerModal({
 				shouldShowRoleDropdown: !formData.isAdmin
 			});
 		}
-	}, [isOpen, formData.isAdmin, availableBranches.length, selectedRole, selectedBranchId]);
+	}, [isOpen, worker, formData.isAdmin, availableBranches, selectedRole, selectedBranchId]);
 
 	const handleInputChange = (
 		e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>

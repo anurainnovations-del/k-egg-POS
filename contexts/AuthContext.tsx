@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
 	User as FirebaseUser,
 	signInWithEmailAndPassword,
@@ -25,6 +25,48 @@ export interface RoleAssignment {
 	assignedBy?: string;
 	isActive?: boolean;
 }
+
+type CachedUser = Pick<
+	User,
+	"uid" | "email" | "displayName" | "name" | "roleAssignments" | "isAdmin"
+>;
+
+const CACHE_KEY = "kegg_pos_auth_user";
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+	return typeof value === "object" && value !== null;
+};
+
+const isCachedUser = (value: unknown): value is CachedUser => {
+	if (!isRecord(value)) return false;
+	if (typeof value.uid !== "string") return false;
+	if (typeof value.isAdmin !== "boolean") return false;
+	if (!Array.isArray(value.roleAssignments)) return false;
+	return true;
+};
+
+const readCachedUser = (): CachedUser | null => {
+	if (typeof window === "undefined") return null;
+	const raw = localStorage.getItem(CACHE_KEY);
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw) as unknown;
+		return isCachedUser(parsed) ? parsed : null;
+	} catch (error) {
+		console.error("Error reading cached user:", error);
+		return null;
+	}
+};
+
+const writeCachedUser = (cached: CachedUser) => {
+	if (typeof window === "undefined") return;
+	localStorage.setItem(CACHE_KEY, JSON.stringify(cached));
+};
+
+const clearCachedUser = () => {
+	if (typeof window === "undefined") return;
+	localStorage.removeItem(CACHE_KEY);
+};
 
 interface AuthContextType {
 	user: User | null;
@@ -74,58 +116,91 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-	const [user, setUser] = useState<User | null>(null);
-	const [loading, setLoading] = useState(true);
+	const cachedSnapshotRef = useRef<CachedUser | null>(readCachedUser());
+	const [user, setUser] = useState<User | null>(() => {
+		const cached = cachedSnapshotRef.current;
+		return cached ? (cached as User) : null;
+	});
+
+	const [loading, setLoading] = useState<boolean>(() => {
+		return cachedSnapshotRef.current === null;
+	});
 
 	useEffect(() => {
-		setPersistence(auth, browserLocalPersistence);
+		void setPersistence(auth, browserLocalPersistence).catch((error) => {
+			console.error("Error setting auth persistence:", error);
+		});
+
+		const hadCachedUser = cachedSnapshotRef.current !== null;
 
 		const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-			setLoading(true);
-
-			if (firebaseUser) {
-				try {
-					const userData = await authService.getUserData(firebaseUser.uid);
-
-					// If no user data exists, it means the user was deleted from Firestore
-					// but the Firebase Auth session is still active. Force logout.
-					if (!userData) {
-						console.log(
-							"User data not found for authenticated user. This usually means the user was deleted. Forcing logout."
-						);
-						await signOut(auth);
-						setUser(null);
-						setLoading(false);
-						return;
-					}
-
-					if (userData) {
-						const extendedUser: User = {
-							...firebaseUser,
-							roleAssignments: userData.roleAssignments,
-							isAdmin: userData.isAdmin,
-							name: userData.name,
-						};
-						console.log("👤 [AuthContext] User loaded:", {
-							uid: extendedUser.uid,
-							email: extendedUser.email,
-							isAdmin: extendedUser.isAdmin,
-							roleAssignments: extendedUser.roleAssignments,
-							roleAssignmentsLength: extendedUser.roleAssignments?.length
-						});
-						setUser(extendedUser);
-					} else {
-						setUser(null);
-					}
-				} catch (error) {
-					console.error("Error loading user data:", error);
-					setUser(null);
-				}
-			} else {
+			if (!firebaseUser) {
 				setUser(null);
+				clearCachedUser();
+				if (!hadCachedUser) {
+					setLoading(false);
+				}
+				return;
 			}
 
-			setLoading(false);
+			// Only show a blocking spinner if there was no cached user at boot.
+			if (!hadCachedUser) {
+				setLoading(true);
+			}
+
+			try {
+				const userData = await authService.getUserData(firebaseUser.uid);
+
+				// If no user data exists, it means the user was deleted from Firestore
+				// but the Firebase Auth session is still active. Force logout.
+				if (!userData) {
+					console.log(
+						"User data not found for authenticated user. This usually means the user was deleted. Forcing logout."
+					);
+					clearCachedUser();
+					await signOut(auth);
+					setUser(null);
+					if (!hadCachedUser) {
+						setLoading(false);
+					}
+					return;
+				}
+
+				const extendedUser: User = {
+					...firebaseUser,
+					roleAssignments: userData.roleAssignments,
+					isAdmin: userData.isAdmin,
+					name: userData.name || firebaseUser.displayName || "",
+				};
+
+				const cachedUserData: CachedUser = {
+					uid: firebaseUser.uid,
+					email: firebaseUser.email ?? null,
+					displayName: firebaseUser.displayName ?? null,
+					name: userData.name || firebaseUser.displayName || "",
+					roleAssignments: userData.roleAssignments,
+					isAdmin: userData.isAdmin,
+				};
+
+				writeCachedUser(cachedUserData);
+
+				console.log("👤 [AuthContext] User loaded & cached:", {
+					uid: extendedUser.uid,
+					email: extendedUser.email,
+					isAdmin: extendedUser.isAdmin,
+					roleAssignments: extendedUser.roleAssignments,
+					roleAssignmentsLength: extendedUser.roleAssignments?.length
+				});
+				setUser(extendedUser);
+			} catch (error) {
+				console.error("Error loading user data:", error);
+				setUser(null);
+				clearCachedUser();
+			} finally {
+				if (!hadCachedUser) {
+					setLoading(false);
+				}
+			}
 		});
 
 		return unsubscribe;

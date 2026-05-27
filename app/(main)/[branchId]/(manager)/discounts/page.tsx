@@ -6,12 +6,10 @@ import MobileTopBar from "@/components/MobileTopBar";
 import { Discount, discountService } from "@/services/discountService";
 import { subscribeToDiscounts, subscribeToCategories } from "@/stores/dataStore";
 import { Category } from "@/services/categoryService";
-import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
+import PlusIcon from "@/components/icons/PlusIcon";
 import DiscountModal from "./components/DiscountModal";
 import DeleteConfirmationModal from "./components/DeleteConfirmationModal";
-import PlusIcon from "@/components/icons/PlusIcon";
-import { Timestamp } from "firebase/firestore";
 import { formatCurrency } from "@/lib/currency_formatter";
 import DiscountsIcon from "@/components/icons/SidebarNav/DiscountsIcon";
 import ViewOnlyWrapper from "@/components/ViewOnlyWrapper";
@@ -90,15 +88,6 @@ export default function DiscountsScreen() {
 		return category ? category.name : "Unknown Category";
 	};
 
-	const formatDate = (timestamp: any) => {
-		if (!timestamp) return "N/A";
-		try {
-			const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-			return date.toLocaleDateString("en-US", {
-				month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-			});
-		} catch (error) { return "Invalid Date"; }
-	};
 
 	if (loading) {
 		return (

@@ -51,8 +51,9 @@ export default function ManagerOverrideModal({
 			// Success
 			setPinInput("");
 			onSuccess();
-		} catch (err: any) {
-			setError(err.message || "Verification failed");
+		} catch (err: unknown) {
+			const error = err as Error;
+			setError(error.message || "Verification failed");
 		} finally {
 			setIsVerifying(false);
 		}

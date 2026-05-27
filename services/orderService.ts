@@ -1,6 +1,19 @@
-import { collection, doc, setDoc, getDocs, query, orderBy, where, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  orderBy,
+  where,
+  Timestamp,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { IngredientDeduction, calculateDeductions, applyIngredientDeductions, applyIngredientAdditions, CartItem } from './ingredientDeductionService';
+import {
+  IngredientDeduction,
+  calculateDeductions,
+  CartItem,
+} from './ingredientDeductionService';
 import { MenuItem } from './menuItemService';
 
 export interface OrderItem {
@@ -37,6 +50,22 @@ export interface Order {
   voidedBy?: string;
 }
 
+export interface StockDeltaActor {
+  uid: string | null;
+  name: string;
+}
+
+export interface IngredientStockDelta {
+  id: string;
+  ingredientId: string;
+  branchId: string;
+  quantityDelta: number;
+  reason: 'ORDER_DEDUCTION' | 'ORDER_VOID';
+  orderId: string;
+  createdAt: Timestamp;
+  createdBy: StockDeltaActor;
+}
+
 export const createOrder = async (
   cartItems: Array<{
     id: string;
@@ -58,7 +87,7 @@ export const createOrder = async (
   branchId: string
 ): Promise<string> => {
   try {
-    const now = Timestamp.fromDate(new Date());
+    const now = Timestamp.now();
 
     // Build order items
     const orderItems: OrderItem[] = cartItems.map((item) => ({
@@ -79,6 +108,7 @@ export const createOrder = async (
       menuItemsMap
     );
 
+    const batch = writeBatch(db);
     const orderRef = doc(collection(db, 'orders'));
 
     const order: Order = {
@@ -102,10 +132,45 @@ export const createOrder = async (
     };
 
     // Save order
-    await setDoc(orderRef, order);
+    batch.set(orderRef, order);
 
-    // Deduct ingredients from stock
-    await applyIngredientDeductions(branchId, deductions);
+    // Record ingredient deltas instead of overwriting stock values.
+    if (deductions.length > 0) {
+      const deltaByIngredient = new Map<string, number>();
+      deductions.forEach((d) => {
+        const current = deltaByIngredient.get(d.ingredientId) ?? 0;
+        deltaByIngredient.set(d.ingredientId, current - d.quantityUsed);
+      });
+
+      deltaByIngredient.forEach((quantityDelta, ingredientId) => {
+        const deltaRef = doc(
+          collection(db, 'ingredients', ingredientId, 'stockDeltas')
+        );
+        const delta: IngredientStockDelta = {
+          id: deltaRef.id,
+          ingredientId,
+          branchId,
+          quantityDelta,
+          reason: 'ORDER_DEDUCTION',
+          orderId: orderRef.id,
+          createdAt: now,
+          createdBy: {
+            uid: workerUid,
+            name: workerName,
+          },
+        };
+        batch.set(deltaRef, delta);
+        batch.update(doc(db, 'ingredients', ingredientId), {
+          updatedAt: now,
+        });
+      });
+    }
+
+    // Commit optimistically so UI can advance without waiting for network.
+    const commitPromise = batch.commit();
+    void commitPromise.catch((error) => {
+      console.error('Error committing order batch:', error);
+    });
 
     return orderRef.id;
   } catch (error) {
@@ -211,16 +276,49 @@ export const voidOrder = async (
       throw new Error('Order is already voided');
     }
 
+    const batch = writeBatch(db);
+    const now = Timestamp.now();
+
     if (orderToVoid.ingredientDeductions && orderToVoid.ingredientDeductions.length > 0) {
-      await applyIngredientAdditions(branchId, orderToVoid.ingredientDeductions);
+      const deltaByIngredient = new Map<string, number>();
+      orderToVoid.ingredientDeductions.forEach((d) => {
+        const current = deltaByIngredient.get(d.ingredientId) ?? 0;
+        deltaByIngredient.set(d.ingredientId, current + d.quantityUsed);
+      });
+
+      deltaByIngredient.forEach((quantityDelta, ingredientId) => {
+        const deltaRef = doc(
+          collection(db, 'ingredients', ingredientId, 'stockDeltas')
+        );
+        const delta: IngredientStockDelta = {
+          id: deltaRef.id,
+          ingredientId,
+          branchId,
+          quantityDelta,
+          reason: 'ORDER_VOID',
+          orderId: orderId,
+          createdAt: now,
+          createdBy: {
+            uid: null,
+            name: voidedByWorkerName,
+          },
+        };
+        batch.set(deltaRef, delta);
+        batch.update(doc(db, 'ingredients', ingredientId), {
+          updatedAt: now,
+        });
+      });
     }
     
-    // Update the order status
-    await setDoc(orderDoc.ref, {
+    // Update the order status inside the batch
+    batch.update(orderDoc.ref, {
       status: 'VOIDED',
-      voidedAt: Timestamp.fromDate(new Date()),
+      voidedAt: now,
       voidedBy: voidedByWorkerName
-    }, { merge: true });
+    });
+
+    // Commit batch atomically
+    await batch.commit();
     
   } catch (error) {
     console.error('Error voiding order:', error);

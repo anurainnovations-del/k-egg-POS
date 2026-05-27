@@ -23,7 +23,6 @@ export default function SafeImage({ src, alt, className }: SafeImageProps) {
             fill
             className={`object-cover ${className || ''}`}
             sizes="102px"
-            unoptimized
             onError={() => {
                 console.error('Image failed to load:', src);
                 setHasError(true);

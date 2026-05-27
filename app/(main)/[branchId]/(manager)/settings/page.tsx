@@ -53,7 +53,7 @@ export default function SettingsScreen() {
 				const data = await settingsService.loadSettings();
 				setSettings(data);
 				setSavedSettings(data);
-			} catch (error) {
+			} catch {
 				const local = settingsService.loadSettingsFromLocal();
 				setSettings(local);
 				setSavedSettings(local);
@@ -76,7 +76,7 @@ export default function SettingsScreen() {
 			setSavedSettings(settings);
 			setSyncStatus("success");
 			setTimeout(() => setSyncStatus("idle"), 3000);
-		} catch (error) {
+		} catch {
 			setSyncStatus("error");
 		} finally {
 			setIsSyncing(false);
@@ -108,7 +108,7 @@ export default function SettingsScreen() {
 			setManagerPin("");
 			setConfirmPin("");
 			setTimeout(() => setPinMessage({ type: "", text: "" }), 3000);
-		} catch (error) {
+		} catch {
 			setPinMessage({ type: "error", text: "Failed to update PIN." });
 		} finally {
 			setIsUpdatingPin(false);

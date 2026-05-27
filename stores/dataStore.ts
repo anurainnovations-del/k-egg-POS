@@ -270,9 +270,14 @@ class DataStore {
 	private startOrdersListener(branchId: string) {
 		if (this.activeOrdersListeners.has(branchId)) return;
 		try {
+			const thirtyOneDaysAgo = new Date();
+			thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
+			thirtyOneDaysAgo.setHours(0, 0, 0, 0);
+
 			const q = query(
 				collection(db, "orders"),
 				where("branchId", "==", branchId),
+				where("timestamp", ">=", Timestamp.fromDate(thirtyOneDaysAgo)),
 				orderBy("timestamp", "desc")
 			);
 			this.ordersUnsubscribes[branchId] = onSnapshot(

@@ -10,6 +10,7 @@ import {
   onSnapshot,
   Timestamp,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { auditService } from './auditService';
@@ -182,36 +183,52 @@ export const bulkDeductIngredientStock = async (
   branchId: string,
   deductions: { id: string; amount: number }[]
 ): Promise<void> => {
-  const current = await getIngredients(branchId);
-  const map = new Map(current.map((i) => [i.id!, i]));
+  try {
+    const current = await getIngredients(branchId);
+    const map = new Map(current.map((i) => [i.id!, i]));
+    const batch = writeBatch(db);
+    const now = Timestamp.now();
 
-  const updates = deductions.map(({ id, amount }) => {
-    const ingredient = map.get(id);
-    if (!ingredient) return Promise.resolve();
-    const newStock = Math.max(0, ingredient.stock - amount);
-    // Note: Internal deductions don't typically need a performer log per item
-    // but we could log the order completion as a whole.
-    return updateIngredient(branchId, id, { stock: newStock });
-  });
+    deductions.forEach(({ id, amount }) => {
+      const ingredient = map.get(id);
+      if (ingredient) {
+        const newStock = Math.max(0, ingredient.stock - amount);
+        const ref = doc(db, COLLECTION_NAME, id);
+        batch.update(ref, { stock: newStock, updatedAt: now });
+      }
+    });
 
-  await Promise.all(updates);
+    await batch.commit();
+  } catch (error) {
+    console.error('Error bulk deducting ingredient stock:', error);
+    throw error;
+  }
 };
 
 export const bulkAddIngredientStock = async (
   branchId: string,
   additions: { id: string; amount: number }[]
 ): Promise<void> => {
-  const current = await getIngredients(branchId);
-  const map = new Map(current.map((i) => [i.id!, i]));
+  try {
+    const current = await getIngredients(branchId);
+    const map = new Map(current.map((i) => [i.id!, i]));
+    const batch = writeBatch(db);
+    const now = Timestamp.now();
 
-  const updates = additions.map(({ id, amount }) => {
-    const ingredient = map.get(id);
-    if (!ingredient) return Promise.resolve();
-    const newStock = ingredient.stock + amount;
-    return updateIngredient(branchId, id, { stock: newStock });
-  });
+    additions.forEach(({ id, amount }) => {
+      const ingredient = map.get(id);
+      if (ingredient) {
+        const newStock = ingredient.stock + amount;
+        const ref = doc(db, COLLECTION_NAME, id);
+        batch.update(ref, { stock: newStock, updatedAt: now });
+      }
+    });
 
-  await Promise.all(updates);
+    await batch.commit();
+  } catch (error) {
+    console.error('Error bulk adding ingredient stock:', error);
+    throw error;
+  }
 };
 
 export const ingredientService = {

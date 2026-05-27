@@ -1,6 +1,10 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -20,21 +24,30 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase Authentication and get a reference to the service
 const auth = getAuth(app);
 
-// Initialize Cloud Firestore and get a reference to the service
-const db = getFirestore(app);
-const storage = getStorage(app);
+// Initialize Cloud Firestore with persistent multi-tab caching.
+const globalScope = globalThis;
+const FIRESTORE_KEY = "__kegg_firestore__";
 
-// Enable persistence
-if (typeof window !== "undefined") {
-  const { enableMultiTabIndexedDbPersistence } = require("firebase/firestore");
-  enableMultiTabIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Firestore persistence failed: multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Firestore persistence not supported by browser');
-    }
-  });
-}
+const db = (() => {
+  const existing = globalScope[FIRESTORE_KEY];
+  if (existing) {
+    return existing;
+  }
+
+  const isBrowser = typeof window !== "undefined";
+  const settings = isBrowser
+    ? {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      }
+    : {};
+
+  const firestore = initializeFirestore(app, settings);
+  globalScope[FIRESTORE_KEY] = firestore;
+  return firestore;
+})();
+const storage = getStorage(app);
 
 export { auth, db, storage };
 export default app;
