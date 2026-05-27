@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
 	LineChart,
 	Line,
@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import TopBar from "@/components/TopBar";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
+import { calculateDeductions } from "@/services/ingredientDeductionService";
 import { Order, voidOrder } from "@/services/orderService";
 import { formatCurrency } from "@/services/salesService";
 import { useBranch } from "@/contexts/BranchContext";
@@ -38,8 +39,8 @@ export default function SalesScreen() {
 	const { user } = useAuth();
 	const [viewPeriod, setViewPeriod] = useState<ViewPeriod>("day");
 	const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData[]>([]);
-	const { orders: allOrders, loading: realtimeLoading } = useRealtimeData();
-	const loading = realtimeLoading.orders;
+	const { orders: allOrders, menuItems, ingredients, categories, loading: realtimeLoading } = useRealtimeData();
+	const loading = realtimeLoading.orders || realtimeLoading.menu || realtimeLoading.ingredients || realtimeLoading.categories;
 	const [currentPeriodStats, setCurrentPeriodStats] = useState({
 		totalRevenue: 0,
 		totalOrders: 0,
@@ -183,6 +184,35 @@ export default function SalesScreen() {
 
 		setCurrentPeriodStats({ totalRevenue, totalOrders, totalProfit, profitMargin });
 	}, [allOrders, viewPeriod, getFilteredOrders, generateTimeSeriesData]);
+
+	// Calculate ingredient consumption for the filtered period
+	const ingredientConsumption = useMemo(() => {
+		if (!menuItems || !ingredients || allOrders.length === 0) return [];
+		
+		const filteredOrders = getFilteredOrders(viewPeriod);
+		
+		// Flatten all order items into CartItem format
+		const allOrderItems = filteredOrders.flatMap((order) =>
+			(order.items || []).map((item) => ({
+				id: item.menuItemId || "",
+				quantity: item.quantity || 0,
+			}))
+		);
+		
+		const menuItemsMap = new Map(menuItems.map((m) => [m.id!, m]));
+		const deductions = calculateDeductions(allOrderItems, menuItemsMap);
+		
+		// Map current ingredient stock and details to the deductions
+		return deductions.map((d) => {
+			const ing = ingredients.find((i) => i.id === d.ingredientId);
+			return {
+				...d,
+				currentStock: ing?.stock ?? 0,
+				lowStockThreshold: ing?.lowStockThreshold ?? 10,
+				categoryName: ing ? categories.find((c) => c.id === ing.categoryId)?.name ?? "Uncategorised" : "Uncategorised",
+			};
+		}).sort((a, b) => b.quantityUsed - a.quantityUsed); // Sort by most consumed first
+	}, [allOrders, menuItems, ingredients, viewPeriod, getFilteredOrders, categories]);
 
 	const formatTooltipValue = (value: any, name: any) => {
 		if (name === "revenue" || name === "profit") {
@@ -364,6 +394,65 @@ export default function SalesScreen() {
 										</LineChart>
 									</ResponsiveContainer>
 								</div>
+							</div>
+
+							{/* Ingredient Consumption Analytics */}
+							<div className='bg-[var(--primary)] p-6 rounded-xl shadow-md border border-[var(--border)] mx-6'>
+								<div className='flex items-center justify-between mb-4'>
+									<div>
+										<h3 className='text-lg font-semibold text-[var(--secondary)]'>Ingredient Consumption</h3>
+										<p className='text-xs text-gray-400 mt-1'>
+											Total ingredients used in orders during this period ({viewPeriod === "day" ? "Today" : viewPeriod === "week" ? "7 Days" : "30 Days"})
+										</p>
+									</div>
+								</div>
+
+								{ingredientConsumption.length === 0 ? (
+									<div className='py-8 text-center text-sm text-gray-500 italic'>
+										No ingredients consumed in this period.
+									</div>
+								) : (
+									<div className='overflow-x-auto'>
+										<table className='w-full text-sm text-[var(--secondary)]'>
+											<thead className='bg-gray-50 border-b border-[var(--border)]'>
+												<tr>
+													<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Ingredient</th>
+													<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Category</th>
+													<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Quantity Consumed</th>
+													<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Current Stock</th>
+													<th className='px-4 py-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Stock Status</th>
+												</tr>
+											</thead>
+											<tbody className='divide-y divide-[var(--border)]'>
+												{ingredientConsumption.map((item) => {
+													const isOut = item.currentStock === 0;
+													const isLow = item.currentStock <= item.lowStockThreshold;
+													return (
+														<tr key={item.ingredientId} className='hover:bg-gray-50/50 transition-colors'>
+															<td className='px-4 py-3 font-semibold'>{item.ingredientName}</td>
+															<td className='px-4 py-3 text-xs text-gray-500'>{item.categoryName}</td>
+															<td className='px-4 py-3 text-right font-black text-[var(--secondary)]'>
+																{item.quantityUsed} <span className='text-[10px] text-gray-400 font-normal'>{item.unit}</span>
+															</td>
+															<td className='px-4 py-3 text-right font-bold'>
+																{item.currentStock} <span className='text-[10px] text-gray-400 font-normal'>{item.unit}</span>
+															</td>
+															<td className='px-4 py-3 text-center'>
+																{isOut ? (
+																	<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 uppercase'>Out</span>
+																) : isLow ? (
+																	<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 uppercase'>Low</span>
+																) : (
+																	<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 uppercase'>OK</span>
+																)}
+															</td>
+														</tr>
+													);
+												})}
+											</tbody>
+										</table>
+									</div>
+								)}
 							</div>
 
 							{/* Orders Table */}

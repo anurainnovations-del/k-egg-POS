@@ -52,7 +52,7 @@ export async function formatReceiptESC(
 	// Print logo if provided
 	if (logoUrl) {
 		try {
-			const logoBitmap = await processLogoForESCPOS(logoUrl, 384, true); // Use dithering for better quality
+			const logoBitmap = await processLogoForESCPOS(logoUrl, 256, true); // 256px wide — fast enough, clear on 58mm paper
 			if (logoBitmap.length > 0) {
 				lines.push(esc([0x1b, 0x61, 0x01])); // Center alignment
 				lines.push(logoBitmap);
@@ -65,16 +65,20 @@ export async function formatReceiptESC(
 
 	// Store name header
 	lines.push(esc([0x1b, 0x61, 0x01])); // Center
-	lines.push(esc([0x1d, 0x21, 0x00])); // Normal
+	lines.push(esc([0x1d, 0x21, 0x11])); // Double width + height
+	if (order.storeName) {
+		lines.push(encoder.encode(`${order.storeName}\n`));
+	}
+	lines.push(esc([0x1d, 0x21, 0x00])); // Normal size
+	if (order.branchName) {
+		lines.push(encoder.encode(`${order.branchName}\n`));
+	}
 	lines.push(encoder.encode("\n"));
 
 	// Order details
 	lines.push(esc([0x1b, 0x61, 0x00])); // Left align
-	lines.push(encoder.encode(`Order #: ${order.orderId}\n`));
+	lines.push(encoder.encode(`Order #: ${order.orderId.slice(-8).toUpperCase()}\n`));
 	lines.push(encoder.encode(`Date: ${order.date.toLocaleString()}\n`));
-	if (order.branchName) {
-		lines.push(encoder.encode(`Branch: ${order.branchName}\n`));
-	}
 	if (order.cashier) {
 		lines.push(encoder.encode(`Cashier: ${order.cashier}\n`));
 	}
@@ -166,7 +170,7 @@ export async function formatReceiptESC(
 export async function formatReceiptWithLogo(
 	order: ReceiptOrderData
 ): Promise<Uint8Array> {
-	const logoUrl = "/K Egg Logo_Korean.png"; // Your pre-processed logo for ESC/POS
+	const logoUrl = "/K Egg Logo_Korean.png";
 	return await formatReceiptESC(order, logoUrl);
 }
 

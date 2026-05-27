@@ -240,7 +240,7 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
       const data = new Uint8Array(escPos);
       setBluetoothStatus('Printing...');
       
-      const chunkSize = 20;
+      const chunkSize = 512; // BLE MTU is typically 512 bytes after negotiation
       for (let i = 0; i < data.length; i += chunkSize) {
         const chunk = data.slice(i, i + chunkSize);
         
@@ -251,7 +251,7 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
             await characteristic.writeValue(chunk);
           }
           
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(resolve => setTimeout(resolve, 10));
         } catch (writeError: any) {
           console.error('Write error:', writeError);
           setBluetoothStatus(`Print error: ${writeError.message}`);
@@ -306,7 +306,7 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
       }
       
       console.log('Printing receipt...');
-      const chunkSize = 20;
+      const chunkSize = 512; // BLE MTU is typically 512 bytes after negotiation
       for (let i = 0; i < receiptData.length; i += chunkSize) {
         const chunk = receiptData.slice(i, i + chunkSize);
         
@@ -317,7 +317,7 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
             await characteristic.writeValue(chunk);
           }
           
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(resolve => setTimeout(resolve, 10));
         } catch (writeError: any) {
           console.error('Write error during receipt print:', writeError);
           return false;

@@ -83,7 +83,7 @@ export default function IngredientsViewPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="xl:hidden w-full">
-        <MobileTopBar title="Ingredients" icon={<IngredientsIcon className="w-6 h-6" />} showTimeTracking={false} onOrderClick={() => {}} />
+        <MobileTopBar title="Ingredients" icon={<IngredientsIcon className="w-6 h-6" />} showTimeTracking={false} />
       </div>
       <div className="hidden xl:block w-full">
         <TopBar title="Ingredients" icon={<IngredientsIcon className="w-6 h-6" />} showTimeTracking={false} />

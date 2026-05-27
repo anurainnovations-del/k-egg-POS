@@ -75,7 +75,7 @@ export default function WorkerOrdersPage() {
 			<div className='flex h-full overflow-hidden'>
 				<div className='flex flex-col flex-1 h-full overflow-hidden'>
 					<div className='xl:hidden w-full'>
-						<MobileTopBar title='Orders' icon={<SalesIcon className="w-6 h-6" />} showTimeTracking={false} onOrderClick={() => {}} />
+						<MobileTopBar title='Orders' icon={<SalesIcon className="w-6 h-6" />} showTimeTracking={false} />
 					</div>
 					<div className='hidden xl:block w-full'>
 						<TopBar title='Orders' icon={<SalesIcon className="w-6 h-6" />} showTimeTracking={false} />
@@ -91,7 +91,7 @@ export default function WorkerOrdersPage() {
 	return (
 		<div className='flex flex-col h-full overflow-hidden'>
 			<div className='xl:hidden w-full'>
-				<MobileTopBar title='Orders' icon={<SalesIcon className="w-6 h-6" />} showTimeTracking={false} onOrderClick={() => {}} />
+				<MobileTopBar title='Orders' icon={<SalesIcon className="w-6 h-6" />} showTimeTracking={false} />
 			</div>
 			<div className='hidden xl:block w-full'>
 				<TopBar title='Orders' icon={<SalesIcon className="w-6 h-6" />} showTimeTracking={false} />

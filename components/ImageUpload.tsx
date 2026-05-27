@@ -35,12 +35,6 @@ export default function ImageUpload({
       return;
     }
 
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError('Image file size must be less than 5MB');
-      return;
-    }
-
     setUploading(true);
     setUploadError(null);
 
@@ -125,7 +119,7 @@ export default function ImageUpload({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
                 <span className="text-sm font-medium text-[var(--secondary)]/50 mb-1 group-hover:text-[var(--accent)]">Click to upload image</span>
-                <span className="text-xs text-[var(--secondary)]/50 group-hover:text-[var(--accent)]">JPG or PNG, max 10MB</span>
+                <span className="text-xs text-[var(--secondary)]/50 group-hover:text-[var(--accent)]">JPG or PNG</span>
               </div>
             )}
           </div>

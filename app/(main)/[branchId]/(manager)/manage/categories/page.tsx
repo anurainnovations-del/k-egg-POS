@@ -309,7 +309,7 @@ export default function CategoriesPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Top Bars */}
       <div className="xl:hidden w-full">
-        <MobileTopBar title="Categories" icon={<CategoriesIcon className="w-6 h-6" />} showTimeTracking={false} onOrderClick={() => {}} />
+        <MobileTopBar title="Categories" icon={<CategoriesIcon className="w-6 h-6" />} showTimeTracking={false} />
       </div>
       <div className="hidden xl:block w-full">
         <TopBar title="Categories" icon={<CategoriesIcon className="w-6 h-6" />} showTimeTracking={false} />

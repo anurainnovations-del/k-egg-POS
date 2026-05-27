@@ -267,7 +267,7 @@ export default function ManagerMenuPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="xl:hidden w-full">
-        <MobileTopBar title="Manage Menu" icon={<MenuIcon className="w-6 h-6" />} showTimeTracking={false} onOrderClick={() => {}} />
+        <MobileTopBar title="Manage Menu" icon={<MenuIcon className="w-6 h-6" />} showTimeTracking={false} />
       </div>
       <div className="hidden xl:block w-full">
         <TopBar title="Manage Menu" icon={<MenuIcon className="w-6 h-6" />} showTimeTracking={false} />

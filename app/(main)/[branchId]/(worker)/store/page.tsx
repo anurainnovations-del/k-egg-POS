@@ -135,7 +135,6 @@ export default function StoreScreen() {
 
   // ── Cart operations ───────────────────────────────────────────────────────────
   const addToCart = (item: MenuItem) => {
-    if (getAvailableServings(item.id ?? "") <= 0) return;
     setCart((prev) => {
       const existing = prev.find((c) => c.id === item.id);
       if (existing) return prev.map((c) => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
@@ -144,7 +143,6 @@ export default function StoreScreen() {
   };
 
   const updateQuantity = (id: string, delta: number) => {
-    if (delta > 0 && getAvailableServings(id) <= 0) return;
     setCart((prev) =>
       prev.map((c) => c.id === id ? { ...c, quantity: Math.max(0, c.quantity + delta) } : c)
           .filter((c) => c.quantity > 0)
@@ -212,13 +210,10 @@ export default function StoreScreen() {
   };
 
   // ── Order Panel (shared between desktop sidebar and mobile sheet) ─────────────
-  const OrderPanel = ({
+  const renderOrderPanel = (
     isMobile = false,
-    onClose,
-  }: {
-    isMobile?: boolean;
-    onClose?: () => void;
-  } = {}) => (
+    onClose?: () => void
+  ) => (
     <div className="flex flex-col h-full">
       <div className={`flex-shrink-0 px-5 py-4 border-b ${isMobile ? "border-[var(--accent)] border-b-2" : "border-[var(--border)]"}`}>
         <div className="flex items-center justify-between gap-3">
@@ -226,7 +221,7 @@ export default function StoreScreen() {
           {isMobile && onClose && (
             <button
               onClick={onClose}
-              className="w-10 h-10 flex items-center justify-center bg-[var(--light-accent)] rounded-full hover:bg-[var(--accent)] transition-all"
+              className="w-11 h-11 flex items-center justify-center bg-[var(--light-accent)] rounded-full hover:bg-[var(--accent)] transition-all"
               aria-label="Close order panel">
               <svg className="w-5 h-5 text-[var(--secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -239,7 +234,7 @@ export default function StoreScreen() {
             <button
               key={type}
               onClick={() => setOrderType(type)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
                 orderType === type
                   ? "bg-[var(--accent)] text-[var(--secondary)]"
                   : "bg-[var(--background)] text-[var(--secondary)]/60 hover:bg-[var(--light-accent)]"
@@ -272,15 +267,28 @@ export default function StoreScreen() {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[13px] text-[var(--secondary)] whitespace-nowrap leading-tight">{item.name}</p>
+                <p className="font-semibold text-[13px] text-[var(--secondary)] leading-tight">{item.name}</p>
                 <p className="text-[10px] text-[var(--secondary)]/60">{formatCurrency(item.price)} each</p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => updateQuantity(item.id, -1)} className="w-6 h-6 rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center text-sm">−</button>
-                <span className="w-5 text-center font-bold text-[var(--secondary)] text-xs">{item.quantity}</span>
-                <button onClick={() => updateQuantity(item.id, 1)} className="w-6 h-6 rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center text-sm">+</button>
+              {/* Larger touch targets for tablet/mobile */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => updateQuantity(item.id, -1)}
+                  className={`rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center ${
+                    isMobile ? "w-10 h-10 text-base" : "w-7 h-7 text-sm"
+                  }`}
+                >−</button>
+                <span className={`text-center font-bold text-[var(--secondary)] ${
+                  isMobile ? "w-7 text-sm" : "w-5 text-xs"
+                }`}>{item.quantity}</span>
+                <button
+                  onClick={() => updateQuantity(item.id, 1)}
+                  className={`rounded-full bg-[var(--accent)]/20 hover:bg-[var(--accent)]/40 text-[var(--secondary)] font-bold transition-all flex items-center justify-center ${
+                    isMobile ? "w-10 h-10 text-base" : "w-7 h-7 text-sm"
+                  }`}
+                >+</button>
               </div>
-              <span className="text-[13px] font-bold text-[var(--secondary)] w-14 text-right">{formatCurrency(item.price * item.quantity)}</span>
+              <span className="text-[13px] font-bold text-[var(--secondary)] w-16 text-right flex-shrink-0">{formatCurrency(item.price * item.quantity)}</span>
             </div>
           ))
         )}
@@ -305,13 +313,13 @@ export default function StoreScreen() {
             <div className="flex justify-between font-bold text-base pt-1 border-t border-[var(--border)]"><span>Total</span><span>{formatCurrency(total)}</span></div>
           </div>
           <div className="flex gap-2">
-            <button onClick={clearCart} className="flex-1 py-2 rounded-xl border-2 border-[var(--accent)] text-[var(--secondary)] font-semibold text-sm hover:bg-[var(--light-accent)] transition-all">Clear</button>
+            <button onClick={clearCart} className="flex-1 py-3 rounded-xl border-2 border-[var(--accent)] text-[var(--secondary)] font-semibold text-sm hover:bg-[var(--light-accent)] transition-all">Clear</button>
             <button 
               onClick={() => {
                 setShowConfirm(true);
                 if (isMobile && onClose) onClose();
               }} 
-              className="flex-[2] py-2 rounded-xl bg-[var(--accent)] text-[var(--secondary)] font-bold text-sm hover:bg-[var(--accent)]/80 transition-all shadow-md">
+              className="flex-[2] py-3 rounded-xl bg-[var(--accent)] text-[var(--secondary)] font-bold text-sm hover:bg-[var(--accent)]/80 transition-all shadow-md">
               Place Order
             </button>
           </div>
@@ -410,10 +418,12 @@ export default function StoreScreen() {
         <div className="flex flex-col flex-1 h-full overflow-hidden">
           {/* Top Bar */}
           <div className="flex items-center justify-between">
-            <div className="xl:hidden w-full">
+            {/* Mobile top bar: visible below lg (phones + portrait iPad) */}
+            <div className="lg:hidden w-full">
               <MobileTopBar title="Store" icon={<StoreIcon />} showTimeTracking onOrderClick={() => setShowOrderMenu(!showOrderMenu)} />
             </div>
-            <div className="hidden xl:block w-full">
+            {/* Desktop top bar: visible at lg+ (landscape iPad, desktop) */}
+            <div className="hidden lg:block w-full">
               <TopBar title="Store" icon={<StoreIcon />} showTimeTracking />
             </div>
           </div>
@@ -473,7 +483,7 @@ export default function StoreScreen() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 mt-2">
                 {filteredItems.map((item) => {
                   const maxServings = availability.get(item.id ?? "") ?? 0;
                   const available = getAvailableServings(item.id ?? "");
@@ -482,9 +492,8 @@ export default function StoreScreen() {
 
                   return (
                     <div key={item.id}
-                      onClick={() => !isOut && addToCart(item)}
-                      className={`bg-white rounded-2xl shadow-md overflow-hidden transition-all cursor-pointer
-                        ${isOut ? "opacity-50 cursor-not-allowed" : "hover:shadow-xl hover:scale-[1.02] hover:border-[var(--accent)] border-2 border-transparent"}`}>
+                      onClick={() => addToCart(item)}
+                      className="bg-white rounded-2xl shadow-md overflow-hidden transition-all cursor-pointer hover:shadow-xl hover:scale-[1.02] hover:border-[var(--accent)] border-2 border-transparent">
                       {/* Image */}
                       <div className="w-full aspect-square bg-[var(--background)] relative overflow-hidden">
                         {item.imgUrl ? (
@@ -494,16 +503,15 @@ export default function StoreScreen() {
                             <StoreIcon className="w-12 h-12" />
                           </div>
                         )}
-                        {isOut && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <span className="text-white text-xs font-bold px-2 py-1 bg-black/60 rounded-lg">UNAVAILABLE</span>
+                        {available <= 0 ? (
+                          <div className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
+                            Out of Stock
                           </div>
-                        )}
-                        {!isOut && available <= 3 && (
-                          <div className="absolute top-2 right-2 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        ) : available <= 3 ? (
+                          <div className="absolute top-2 right-2 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
                             {available} left
                           </div>
-                        )}
+                        ) : null}
                         {cartQty > 0 && (
                           <div className="absolute top-2 left-2 bg-[var(--accent)] text-[var(--secondary)] text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center shadow">
                             {cartQty}
@@ -529,46 +537,46 @@ export default function StoreScreen() {
           </div>
         </div>
 
-        {/* ── Desktop Order Panel ── */}
-        <div className="hidden xl:flex flex-col w-[480px] border-l border-[var(--border)] bg-white h-full overflow-hidden">
-          <OrderPanel />
+        {/* ── Persistent Order Panel: lg+ (landscape iPad & desktop) ── */}
+        <div className="hidden lg:flex flex-col w-[380px] xl:w-[440px] 2xl:w-[480px] border-l border-[var(--border)] bg-white h-full overflow-hidden flex-shrink-0">
+          {renderOrderPanel(false)}
         </div>
 
-        {/* ── Mobile Floating Order Button ── */}
+        {/* ── Mobile / Portrait-iPad Floating Order Button (below lg only) ── */}
         {!showOrderMenu && (
           <button
             onClick={() => setShowOrderMenu(true)}
-            className="fixed xl:hidden bottom-5 right-5 z-40 bg-[var(--accent)] text-[var(--secondary)] rounded-2xl shadow-xl px-4 py-3 flex items-center gap-3 hover:scale-105 active:scale-95 transition-all"
+            className="fixed lg:hidden bottom-5 right-5 z-40 bg-[var(--accent)] text-[var(--secondary)] rounded-2xl shadow-xl px-5 py-3.5 flex items-center gap-3 hover:scale-105 active:scale-95 transition-all"
             aria-label="Open order menu">
             <div className="relative">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.5 6h13M7 13l-1-4m6 4v4m4-4v4" />
               </svg>
               {cartItemCount > 0 && (
-                <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-[var(--secondary)] text-[var(--primary)] text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-2.5 -right-2.5 min-w-[22px] h-[22px] px-1 rounded-full bg-[var(--secondary)] text-[var(--primary)] text-[11px] font-bold flex items-center justify-center">
                   {cartItemCount}
                 </span>
               )}
             </div>
             <div className="text-left">
-              <p className="text-[10px] font-semibold leading-none opacity-80">Current Order</p>
-              <p className="text-xs font-bold">{formatCurrency(total)}</p>
+              <p className="text-[11px] font-semibold leading-none opacity-80">Current Order</p>
+              <p className="text-sm font-bold mt-0.5">{formatCurrency(total)}</p>
             </div>
           </button>
         )}
 
-        {/* ── Mobile Order Sheet ── */}
+        {/* ── Mobile / Portrait-iPad Order Sheet (below lg only) ── */}
         <AnimatePresence>
           {showOrderMenu && (
-            <div className="fixed inset-0 z-50 xl:hidden">
+            <div className="fixed inset-0 z-50 lg:hidden">
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: 0.2 }}
                 className="absolute inset-0 bg-black/50" onClick={() => setShowOrderMenu(false)} />
               <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
                 transition={{ type: "spring", damping: 50, stiffness: 300 }}
-                className="absolute top-0 right-0 bottom-0 w-full bg-[var(--primary)] shadow-2xl flex flex-col">
+                className="absolute top-0 right-0 bottom-0 w-full md:w-[65%] bg-[var(--primary)] shadow-2xl flex flex-col">
                 <div className="flex-1 overflow-hidden">
-                  <OrderPanel isMobile onClose={() => setShowOrderMenu(false)} />
+                  {renderOrderPanel(true, () => setShowOrderMenu(false))}
                 </div>
               </motion.div>
             </div>
