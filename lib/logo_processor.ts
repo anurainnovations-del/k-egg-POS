@@ -109,8 +109,22 @@ export class LogoProcessor {
   private loadImage(url: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
+      
+      const timeoutId = setTimeout(() => {
+        console.warn(`Logo image load timed out for URL: ${url}`);
+        reject(new Error("Image load timed out"));
+      }, 1500); // 1.5 seconds timeout
+
+      img.onload = () => {
+        clearTimeout(timeoutId);
+        resolve(img);
+      };
+      
+      img.onerror = (err) => {
+        clearTimeout(timeoutId);
+        reject(err);
+      };
+      
       img.crossOrigin = 'anonymous';
       img.src = url;
     });

@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { MenuItem } from "@/services/menuItemService";
-import { Ingredient } from "@/services/ingredientService";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
-import { Category } from "@/services/categoryService";
 import { createOrder } from "@/services/orderService";
 import { getMenuItemsAvailability } from "@/services/availabilityService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -66,7 +64,7 @@ function SuccessToast({ show, onClose, orderId }: { show: boolean; onClose: () =
 export default function StoreScreen() {
   const { user } = useAuth();
   const { currentBranch } = useBranch();
-  const { printReceipt } = useBluetoothPrinter();
+  const { printReceipt, openCashDrawer, bluetoothDevice, connectToBluetoothPrinter, disconnectPrinter } = useBluetoothPrinter();
   const timeTracking = useTimeTracking({ autoRefresh: true });
 
   const { menuItems, ingredients, categories, loading: realtimeLoading } = useRealtimeData();
@@ -88,10 +86,6 @@ export default function StoreScreen() {
   const [showOrderMenu, setShowOrderMenu] = useState(false);
 
   const [receivedAmount, setReceivedAmount] = useState<number | "">("");
-  const [isClient, setIsClient] = useState(false);
-
-  // Initialize client state for settings
-  useEffect(() => { setIsClient(true); }, []);
 
   // Recalculate availability whenever ingredients or menu items change
   useEffect(() => {
@@ -184,7 +178,7 @@ export default function StoreScreen() {
         const payment = typeof receivedAmount === "number" ? receivedAmount : total;
         const change = Math.max(0, payment - total);
 
-        const bytes = await formatReceiptWithLogo({
+        const orderData = {
           orderId, date: new Date(),
           items: cart.map((c) => ({ name: c.name, qty: c.quantity, price: c.price, total: c.price * c.quantity })),
           subtotal, discount: discountAmount, appliedDiscountCode: appliedDiscount?.discount_code ?? "",
@@ -192,9 +186,16 @@ export default function StoreScreen() {
           cashier: timeTracking.worker?.name ?? user.displayName ?? "Worker",
           cashierEmployeeId: timeTracking.worker?.employeeId ?? user.uid,
           storeName: "K-egg POS", branchName: currentBranch.name,
-        });
-        await printReceipt(bytes);
-      } catch { /* printing is best-effort */ }
+        };
+
+        const bytes = await formatReceiptWithLogo(orderData);
+        const printSuccess = await printReceipt(bytes, orderData);
+        if (!printSuccess) {
+          console.warn("Receipt print failed (returned false). Check printer connection in Settings.");
+        }
+      } catch (printErr) {
+        console.error("Receipt generation/printing threw an error:", printErr);
+      }
 
       setSuccessOrderId(orderId);
       setShowToast(true);
@@ -217,17 +218,55 @@ export default function StoreScreen() {
     <div className="flex flex-col h-full">
       <div className={`flex-shrink-0 px-5 py-4 border-b ${isMobile ? "border-[var(--accent)] border-b-2" : "border-[var(--border)]"}`}>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-[var(--secondary)]">Current Order</h2>
-          {isMobile && onClose && (
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-[var(--secondary)]">Current Order</h2>
+          </div>
+          
+          <div className="flex items-center gap-1.5">
+            {/* Quick Open Drawer Action */}
             <button
-              onClick={onClose}
-              className="w-11 h-11 flex items-center justify-center bg-[var(--light-accent)] rounded-full hover:bg-[var(--accent)] transition-all"
-              aria-label="Close order panel">
-              <svg className="w-5 h-5 text-[var(--secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              onClick={async () => {
+                const success = await openCashDrawer();
+                if (!success) {
+                  alert("Failed to open cash drawer. Please make sure the printer is connected.");
+                }
+              }}
+              title="Open Cash Drawer"
+              className="p-1.5 text-[var(--secondary)]/40 hover:text-[var(--accent)] hover:bg-[var(--light-accent)] rounded-lg transition-all"
+              aria-label="Open cash drawer"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
               </svg>
             </button>
-          )}
+
+            {/* Quick Bluetooth Printer Status & Connect */}
+            <button
+              onClick={bluetoothDevice ? disconnectPrinter : connectToBluetoothPrinter}
+              title={bluetoothDevice ? `Connected to: ${bluetoothDevice.name || 'Printer'}. Click to disconnect.` : "Printer disconnected. Click to connect."}
+              className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${
+                bluetoothDevice 
+                  ? "text-green-600 bg-green-50 hover:bg-green-100" 
+                  : "text-red-500 bg-red-50 hover:bg-red-100 animate-pulse hover:scale-105"
+              }`}
+              aria-label="Printer connection status"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+            </button>
+
+            {isMobile && onClose && (
+              <button
+                onClick={onClose}
+                className="w-11 h-11 flex items-center justify-center bg-[var(--light-accent)] rounded-full hover:bg-[var(--accent)] transition-all"
+                aria-label="Close order panel">
+                <svg className="w-5 h-5 text-[var(--secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex gap-2 mt-2 flex-wrap">
           {(["DINE-IN", "TAKE OUT", "DELIVERY"] as const).map((type) => (
@@ -487,7 +526,6 @@ export default function StoreScreen() {
                 {filteredItems.map((item) => {
                   const maxServings = availability.get(item.id ?? "") ?? 0;
                   const available = getAvailableServings(item.id ?? "");
-                  const isOut = maxServings === 0;
                   const cartQty = cart.find((c) => c.id === item.id)?.quantity ?? 0;
 
                   return (
