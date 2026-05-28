@@ -146,8 +146,8 @@ self.addEventListener("fetch", (event) => {
 			staleWhileRevalidate(request, SHELL_CACHE).then((response) => {
 				if (response) return response;
 				return caches
-					.match("/offline.html")
-					.then((fallback) => fallback || caches.match("/"))
+					.match("/")
+					.then((fallback) => fallback || caches.match("/offline.html"))
 					.then((fallback) => fallback || Response.error());
 			}),
 		);

@@ -76,6 +76,19 @@ export default function BranchesPage() {
 		return unsubscribe; // Cleanup on unmount
 	}, []);
 
+	// Prefetch branch POS and management routes for offline capability
+	useEffect(() => {
+		if (branches.length > 0 && typeof window !== "undefined" && navigator.onLine) {
+			branches.forEach((branch) => {
+				router.prefetch(`/${branch.id}/store`);
+				router.prefetch(`/${branch.id}/worker/pos`);
+				router.prefetch(`/${branch.id}/worker/orders`);
+				router.prefetch(`/${branch.id}/manager/sales`);
+				router.prefetch(`/${branch.id}/manager/stock`);
+			});
+		}
+	}, [branches, router]);
+
 	// Don't render for non-admin users (will redirect)
 	if (!user || !isUserAdmin()) {
 		return (
