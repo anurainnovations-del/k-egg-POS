@@ -255,22 +255,29 @@ export const getTopSellingItems = (orders: Order[], limit = 10) => {
 export const voidOrder = async (
   branchId: string,
   orderId: string,
-  voidedByWorkerName: string
+  voidedByWorkerName: string,
+  orderData?: Order
 ): Promise<void> => {
   try {
-    const orderRef = doc(db, 'orders', orderId);
+    let orderToVoid: Order;
+    let orderDocRef = doc(db, 'orders', orderId);
     
-    // Reverse the ingredient deductions
-    // First, we need to get the order details to know what to reverse
-    const q = query(collection(db, 'orders'), where('id', '==', orderId), where('branchId', '==', branchId));
-    const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
-      throw new Error('Order not found');
+    if (orderData) {
+      orderToVoid = orderData;
+    } else {
+      // Reverse the ingredient deductions
+      // First, we need to get the order details to know what to reverse
+      const q = query(collection(db, 'orders'), where('id', '==', orderId), where('branchId', '==', branchId));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        throw new Error('Order not found');
+      }
+      
+      const orderDoc = snapshot.docs[0];
+      orderToVoid = orderDoc.data() as Order;
+      orderDocRef = orderDoc.ref;
     }
-    
-    const orderDoc = snapshot.docs[0];
-    const orderToVoid = orderDoc.data() as Order;
     
     if (orderToVoid.status === 'VOIDED') {
       throw new Error('Order is already voided');
@@ -311,17 +318,17 @@ export const voidOrder = async (
     }
     
     // Update the order status inside the batch
-    batch.update(orderDoc.ref, {
+    batch.update(orderDocRef, {
       status: 'VOIDED',
       voidedAt: now,
       voidedBy: voidedByWorkerName
     });
 
-    // Commit batch atomically
+    // Commit batch atomically (which writes to cache first, resolving immediately if offline)
     await batch.commit();
     
   } catch (error) {
     console.error('Error voiding order:', error);
-    throw new Error('Failed to void order');
+    throw new Error(error instanceof Error ? error.message : 'Failed to void order');
   }
 };

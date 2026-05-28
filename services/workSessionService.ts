@@ -50,7 +50,8 @@ export interface WorkSessionService {
 	timeOutWorker: (
 		userId: string,
 		sessionId?: string,
-		notes?: string
+		notes?: string,
+		activeSessionData?: WorkSession & { id: string }
 	) => Promise<void>;
 
 	// Utility methods
@@ -476,35 +477,42 @@ export const workSessionService: WorkSessionService = {
 	timeOutWorker: async (
 		userId: string,
 		sessionId?: string,
-		notes?: string
+		notes?: string,
+		activeSessionData?: WorkSession & { id: string }
 	): Promise<void> => {
 		try {
 			let actualSessionId = sessionId;
+			let session: WorkSession | null = activeSessionData || null;
 
-			// If sessionId is missing or seems to be a userId (fallback), try to find the active session
-			if (!actualSessionId || actualSessionId === userId) {
-				const activeSession = await workSessionService.getActiveWorkSession(userId);
-				if (!activeSession) {
-					// If still no active session but user is trying to clock out, 
-					// we should at least update their status to clocked_out
-					const userDocRef = doc(db, "users", userId);
-					await updateDoc(userDocRef, {
-						currentStatus: "clocked_out",
-						lastTimeOut: Timestamp.now(),
-						updatedAt: Timestamp.now(),
-					});
-					return;
+			// If activeSessionData was not passed, we try to find the active session
+			if (!session) {
+				if (!actualSessionId || actualSessionId === userId) {
+					const activeSession = await workSessionService.getActiveWorkSession(userId);
+					if (!activeSession) {
+						// If still no active session but user is trying to clock out, 
+						// we should at least update their status to clocked_out
+						const userDocRef = doc(db, "users", userId);
+						await updateDoc(userDocRef, {
+							currentStatus: "clocked_out",
+							lastTimeOut: Timestamp.now(),
+							updatedAt: Timestamp.now(),
+						});
+						return;
+					}
+					actualSessionId = activeSession.id;
+					session = activeSession;
+				} else {
+					session = await workSessionService.getWorkSession(actualSessionId as string);
 				}
-				actualSessionId = activeSession.id;
+			} else if (activeSessionData) {
+				actualSessionId = activeSessionData.id;
 			}
 
-			const timeOutAt = Timestamp.now();
-
-			// Get the existing session to calculate duration
-			const session = await workSessionService.getWorkSession(actualSessionId as string);
 			if (!session) {
 				throw new Error("Work session not found");
 			}
+
+			const timeOutAt = Timestamp.now();
 
 			const duration = workSessionService.calculateSessionDuration(
 				session.timeInAt,

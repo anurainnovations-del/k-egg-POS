@@ -181,10 +181,11 @@ export const getLowStockIngredients = async (
  */
 export const bulkDeductIngredientStock = async (
   branchId: string,
-  deductions: { id: string; amount: number }[]
+  deductions: { id: string; amount: number }[],
+  ingredientsData?: Ingredient[]
 ): Promise<void> => {
   try {
-    const current = await getIngredients(branchId);
+    const current = ingredientsData ?? await getIngredients(branchId);
     const map = new Map(current.map((i) => [i.id!, i]));
     const batch = writeBatch(db);
     const now = Timestamp.now();
@@ -207,10 +208,11 @@ export const bulkDeductIngredientStock = async (
 
 export const bulkAddIngredientStock = async (
   branchId: string,
-  additions: { id: string; amount: number }[]
+  additions: { id: string; amount: number }[],
+  ingredientsData?: Ingredient[]
 ): Promise<void> => {
   try {
-    const current = await getIngredients(branchId);
+    const current = ingredientsData ?? await getIngredients(branchId);
     const map = new Map(current.map((i) => [i.id!, i]));
     const batch = writeBatch(db);
     const now = Timestamp.now();

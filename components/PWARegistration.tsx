@@ -25,23 +25,44 @@ export default function PWARegistration() {
 			return;
 		}
 
-		const registerServiceWorker = () => {
-			const buildId = getBuildId();
-			const swUrl = `/sw.js?buildId=${encodeURIComponent(buildId)}`;
-			void navigator.serviceWorker.register(swUrl, {
-				updateViaCache: "none",
-			});
+		const registerServiceWorker = async () => {
+			try {
+				const buildId = getBuildId();
+				const swUrl = `/sw.js?buildId=${encodeURIComponent(buildId)}`;
+				const reg = await navigator.serviceWorker.register(swUrl, {
+					updateViaCache: "none",
+				});
+
+				// Handle updates to the service worker
+				reg.addEventListener("updatefound", () => {
+					const newWorker = reg.installing;
+					if (newWorker) {
+						newWorker.addEventListener("statechange", () => {
+							if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+								console.log("New POS version found and loaded. Refreshing...");
+								window.location.reload();
+							}
+						});
+					}
+				});
+			} catch (error) {
+				console.error("Service worker registration failed:", error);
+			}
 		};
 
 		if (document.readyState === "complete") {
-			registerServiceWorker();
+			void registerServiceWorker();
 			return;
 		}
 
-		window.addEventListener("load", registerServiceWorker);
+		const handleLoad = () => {
+			void registerServiceWorker();
+		};
+
+		window.addEventListener("load", handleLoad);
 
 		return () => {
-			window.removeEventListener("load", registerServiceWorker);
+			window.removeEventListener("load", handleLoad);
 		};
 	}, []);
 

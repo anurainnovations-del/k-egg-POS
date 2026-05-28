@@ -236,7 +236,8 @@ export function TimeTrackingProvider({
 				await workSessionService.timeOutWorker(
 					user.uid,
 					state.currentSession?.id,
-					notes || `Clock-out via POS at ${new Date().toLocaleString()}`
+					notes || `Clock-out via POS at ${new Date().toLocaleString()}`,
+					state.currentSession
 				);
 
 				// Status will be updated automatically via dataStore subscription

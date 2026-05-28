@@ -6,6 +6,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { TimeTrackingProvider } from "@/contexts/TimeTrackingContext";
 import { BranchProvider } from "@/contexts/BranchContext";
 import { BluetoothProvider } from "@/contexts/BluetoothContext";
+import { NetworkProvider } from "@/contexts/NetworkContext";
+import OfflineIndicator from "@/components/OfflineIndicator";
 import PWARegistration from "@/components/PWARegistration";
 
 const poppins = Poppins({
@@ -42,15 +44,18 @@ export default function RootLayout({
 		<html lang='en'>
 			<body className={`${poppins.variable} antialiased`}>
 				<PWARegistration />
-				<AuthProvider>
-					<BluetoothProvider>
-						<TimeTrackingProvider options={{ autoRefresh: true }}>
-							<BranchProvider>
-								<DateTimeProvider>{children}</DateTimeProvider>
-							</BranchProvider>
-						</TimeTrackingProvider>
-					</BluetoothProvider>
-				</AuthProvider>
+				<NetworkProvider>
+					<OfflineIndicator />
+					<AuthProvider>
+						<BluetoothProvider>
+							<TimeTrackingProvider options={{ autoRefresh: true }}>
+								<BranchProvider>
+									<DateTimeProvider>{children}</DateTimeProvider>
+								</BranchProvider>
+							</TimeTrackingProvider>
+						</BluetoothProvider>
+					</AuthProvider>
+				</NetworkProvider>
 			</body>
 		</html>
 	);

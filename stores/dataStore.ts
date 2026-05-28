@@ -512,6 +512,14 @@ class DataStore {
 	public getDiscounts(branchId: string): Discount[] { return [...(this.discounts[branchId] || [])]; }
 	public getWorker(userId: string): Worker | null { return this.workers[userId] || null; }
 
+	public hasCachedData(branchId: string): boolean {
+		return (
+			(this.ingredients[branchId]?.length ?? 0) > 0 &&
+			(this.menuItems[branchId]?.length ?? 0) > 0 &&
+			this.categories.length > 0
+		);
+	}
+
 	// ── Cleanup ────────────────────────────────────────────────────────────────
 
 	public cleanupBranch(branchId: string) {
@@ -586,3 +594,7 @@ export const subscribeToWorker = (
 	userId: string,
 	callback: (worker: Worker | null) => void
 ) => dataStore.subscribeToWorker(userId, callback);
+
+export const hasCachedData = (
+	branchId: string
+) => dataStore.hasCachedData(branchId);

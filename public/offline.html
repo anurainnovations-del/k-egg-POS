@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline | K-egg POS</title>
+    <style>
+        :root {
+            --primary: #fffbeb;
+            --secondary: #451a03;
+            --accent: #f59e0b;
+            --background: #fafaf9;
+            --text-muted: #78716c;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--background);
+            color: var(--secondary);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+        }
+        .container {
+            max-width: 440px;
+            padding: 3rem 2rem;
+            background: white;
+            border-radius: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
+            margin: 1.5rem;
+        }
+        .icon-box {
+            display: inline-flex;
+            padding: 1.5rem;
+            background-color: var(--primary);
+            color: var(--accent);
+            border-radius: 1.5rem;
+            margin-bottom: 1.5rem;
+            animation: pulse 2s infinite ease-in-out;
+        }
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin: 0 0 0.75rem 0;
+        }
+        p {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin: 0 0 2.5rem 0;
+        }
+        .btn {
+            display: inline-block;
+            background-color: var(--accent);
+            color: white;
+            padding: 0.85rem 2.5rem;
+            border-radius: 1rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.3);
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(245, 158, 11, 0.4);
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.9; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon-box">
+            <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-3.536 4.978 4.978 0 011.414-3.536m0 0L8.464 11.29m-4.243 4.243L1.5 18m2.828-12.728A9 9 0 015.636 18.364m0 0L8.464 15.536" />
+            </svg>
+        </div>
+        <h1>Offline Mode</h1>
+        <p>You are currently offline. The K-egg POS works completely offline, keeping your sales and logs saved locally. Load a branch to access cached data.</p>
+        <a href="/" class="btn">Go to Dashboard</a>
+    </div>
+</body>
+</html>

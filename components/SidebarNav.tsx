@@ -11,7 +11,7 @@ import BranchesIcon from "./icons/SidebarNav/BranchesIcon";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import ManagementIcon from "./icons/SidebarNav/ManagementIcon";
 import UsersIcon from "./icons/SidebarNav/UsersIcon";
@@ -30,6 +30,7 @@ export default function SidebarNav() {
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const router = useRouter();
 	const pathname = usePathname();
+	const isAdminUser = isUserAdmin();
 
 	const params = useParams();
 	const branchIdFromUrl = typeof params.branchId === "string" ? params.branchId : null;
@@ -40,10 +41,10 @@ export default function SidebarNav() {
 
 	// Determine if we should show branch sections based on currentBranch OR if we are in a branch route
 	const isInBranchRoute = !!branchIdFromUrl;
-	const shouldShowWorkerSection = !isUserAdmin() || currentBranch || isInBranchRoute;
+	const shouldShowWorkerSection = !isAdminUser || currentBranch || isInBranchRoute;
 	const shouldShowManagerSection =
-		(!isUserAdmin() && (isManagerForCurrentBranch || isUserAdmin())) ||
-		(isUserAdmin() && (currentBranch || isInBranchRoute));
+		(!isAdminUser && (isManagerForCurrentBranch || isAdminUser)) ||
+		(isAdminUser && (currentBranch || isInBranchRoute));
 
 	// Worker section — Store + Ingredients (view-only) + Orders (with override)
 	const workerNavItems: NavItem[] = [
@@ -68,6 +69,38 @@ export default function SidebarNav() {
 		{ href: "/admin/branches", label: "Branches", icon: BranchesIcon, adminOnly: true },
 		{ href: "/admin/users", label: "Users", icon: UsersIcon, adminOnly: true },
 	];
+
+	useEffect(() => {
+		if (typeof window === "undefined" || !navigator.onLine) return;
+
+		const targets: string[] = [];
+		if (shouldShowWorkerSection) {
+			workerNavItems.forEach((item) => {
+				const href = getBranchAwareHref(item.href);
+				if (href !== "#") targets.push(href);
+			});
+		}
+		if (shouldShowManagerSection) {
+			managerNavItems.forEach((item) => {
+				const href = getBranchAwareHref(item.href);
+				if (href !== "#") targets.push(href);
+			});
+		}
+		if (isAdminUser) {
+			adminNavItems.forEach((item) => targets.push(item.href));
+		}
+
+		targets.forEach((href) => {
+			void router.prefetch(href);
+		});
+	}, [
+		router,
+		currentBranch?.id,
+		branchIdFromUrl,
+		shouldShowWorkerSection,
+		shouldShowManagerSection,
+		isAdminUser,
+	]);
 
 	const getBranchAwareHref = (page: string) => {
 		const bId = currentBranch?.id || branchIdFromUrl;
@@ -180,7 +213,7 @@ export default function SidebarNav() {
 						)}
 
 						{/* Admin Section */}
-						{isUserAdmin() && (
+						{isAdminUser && (
 							<>
 								<li className='pt-4'>
 									<div className='px-3 py-2 text-xs font-bold text-[var(--secondary)]/60 uppercase tracking-wider'>

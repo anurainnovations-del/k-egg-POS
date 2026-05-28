@@ -73,7 +73,7 @@ export default function WorkerOrdersPage() {
 		
 		try {
 			const workerName = user?.email?.split('@')[0] || "Unknown";
-			await voidOrder(currentBranch.id, orderToVoid.id, workerName);
+			await voidOrder(currentBranch.id, orderToVoid.id, workerName, orderToVoid);
 			
 			setOrderToVoid(null);
 			setIsOverrideModalOpen(false);

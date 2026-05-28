@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  generateBuildId: async () => {
+    return process.env.NEXT_PUBLIC_BUILD_ID || `build-${Date.now()}`;
+  },
 };
 
 export default nextConfig;

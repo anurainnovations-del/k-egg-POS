@@ -5,8 +5,10 @@ const SHELL_CACHE = `${CACHE_PREFIX}shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `${CACHE_PREFIX}assets-${CACHE_VERSION}`;
 const DATA_CACHE = `${CACHE_PREFIX}data-${CACHE_VERSION}`;
 const CURRENT_CACHES = new Set([SHELL_CACHE, ASSET_CACHE, DATA_CACHE]);
+
 const APP_SHELL_ASSETS = [
 	"/",
+	"/offline.html",
 	"/manifest.json",
 	"/192x192.png?v=2",
 	"/512x512.png?v=2",
@@ -64,6 +66,16 @@ const isNextDataRequest = (request) => {
 	return isRsc || isPrefetch || hasStateTree;
 };
 
+const offlineResponse = (message) => {
+	return new Response(message, {
+		status: 503,
+		statusText: "Offline",
+		headers: {
+			"Content-Type": "text/plain",
+		},
+	});
+};
+
 const staleWhileRevalidate = (request, cacheName) => {
 	return caches.open(cacheName).then((cache) => {
 		return cache.match(request).then((cachedResponse) => {
@@ -92,16 +104,16 @@ self.addEventListener("activate", (event) => {
 	event.waitUntil(
 		caches
 			.keys()
-				.then((keys) =>
-					Promise.all(
-						keys
-							.filter(
-								(key) =>
-									key.startsWith(CACHE_PREFIX) && !CURRENT_CACHES.has(key),
-							)
-							.map((key) => caches.delete(key)),
-					),
-				)
+			.then((keys) =>
+				Promise.all(
+					keys
+						.filter(
+							(key) =>
+								key.startsWith(CACHE_PREFIX) && !CURRENT_CACHES.has(key),
+						)
+						.map((key) => caches.delete(key)),
+				),
+			)
 			.then(() => self.clients.claim()),
 	);
 });
@@ -118,7 +130,13 @@ self.addEventListener("fetch", (event) => {
 		return;
 	}
 
-	if (url.pathname.startsWith("/api/")) {
+	// Bypass caching for firebase / api routes
+	if (
+		url.pathname.startsWith("/api/") ||
+		url.hostname.includes("firestore.googleapis.com") ||
+		url.hostname.includes("firebase") ||
+		url.pathname.includes("identitytoolkit")
+	) {
 		event.respondWith(fetch(request));
 		return;
 	}
@@ -128,7 +146,8 @@ self.addEventListener("fetch", (event) => {
 			staleWhileRevalidate(request, SHELL_CACHE).then((response) => {
 				if (response) return response;
 				return caches
-					.match("/")
+					.match("/offline.html")
+					.then((fallback) => fallback || caches.match("/"))
 					.then((fallback) => fallback || Response.error());
 			}),
 		);
@@ -136,7 +155,11 @@ self.addEventListener("fetch", (event) => {
 	}
 
 	if (isNextDataRequest(request)) {
-		event.respondWith(staleWhileRevalidate(request, DATA_CACHE));
+		event.respondWith(
+			staleWhileRevalidate(request, DATA_CACHE).then(
+				(response) => response || offlineResponse("Offline data not cached."),
+			),
+		);
 		return;
 	}
 

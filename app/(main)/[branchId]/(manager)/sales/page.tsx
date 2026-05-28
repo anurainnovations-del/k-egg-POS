@@ -269,7 +269,7 @@ export default function SalesScreen() {
 			}
 
 			const workerName = user?.email?.split('@')[0] || "Unknown";
-			await voidOrder(currentBranch.id, orderToVoid.id, workerName);
+			await voidOrder(currentBranch.id, orderToVoid.id, workerName, orderToVoid);
 
 			setVoidModalOpen(false);
 			setOrderToVoid(null);
