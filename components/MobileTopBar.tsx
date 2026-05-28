@@ -15,6 +15,7 @@ import { useState } from "react";
 import { useTimeTracking } from "@/contexts/TimeTrackingContext";
 import { useBranch } from "@/contexts/BranchContext";
 import StockAlertBell from "@/components/StockAlertBell";
+import OfflineIndicator from "@/components/OfflineIndicator";
 
 interface MobileTopBarProps {
 	title?: string;
@@ -103,6 +104,7 @@ export default function MobileTopBar({
 				)}
 			</div>
 			<div className='flex items-center gap-3 px-4 py-2 overflow-x-auto'>
+				<OfflineIndicator />
 				<div className='flex-1 h-12 px-3 py-2 flex bg-[var(--primary)] rounded-xl text-[var(--secondary)] gap-2 items-center font-medium text-xs'>
 					<span className='w-7 h-7 bg-[var(--light-accent)] rounded-full flex items-center justify-center text-[var(--secondary)]'>
 						<UserIcon />

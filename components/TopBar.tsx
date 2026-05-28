@@ -13,6 +13,7 @@ import { useTimeTracking } from "@/contexts/TimeTrackingContext";
 import { useBranch } from "@/contexts/BranchContext";
 import MenuBurgerIcon from "@/components/icons/MenuBurger";
 import StockAlertBell from "@/components/StockAlertBell";
+import OfflineIndicator from "@/components/OfflineIndicator";
 
 
 interface TopBarProps {
@@ -89,6 +90,8 @@ export default function TopBar({
 					</button>
 
 					<StockAlertBell />
+
+					<OfflineIndicator />
 
 					{/* User Info*/}
 					<div className='relative group'>

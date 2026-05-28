@@ -7,7 +7,6 @@ import { TimeTrackingProvider } from "@/contexts/TimeTrackingContext";
 import { BranchProvider } from "@/contexts/BranchContext";
 import { BluetoothProvider } from "@/contexts/BluetoothContext";
 import { NetworkProvider } from "@/contexts/NetworkContext";
-import OfflineIndicator from "@/components/OfflineIndicator";
 import PWARegistration from "@/components/PWARegistration";
 
 const poppins = Poppins({
@@ -45,7 +44,6 @@ export default function RootLayout({
 			<body className={`${poppins.variable} antialiased`}>
 				<PWARegistration />
 				<NetworkProvider>
-					<OfflineIndicator />
 					<AuthProvider>
 						<BluetoothProvider>
 							<TimeTrackingProvider options={{ autoRefresh: true }}>
