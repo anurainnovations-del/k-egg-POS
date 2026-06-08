@@ -3,15 +3,15 @@ import {
 	addDoc,
 	getDocs,
 	doc,
-	deleteDoc,
 	query,
 	orderBy,
 	onSnapshot,
 	Timestamp,
 	getDoc,
 	updateDoc,
-	setDoc,
 	where,
+	writeBatch,
+	DocumentReference,
 } from "firebase/firestore";
 import { db } from "@/firebase-config";
 
@@ -155,11 +155,74 @@ export const branchService = {
 		}
 	},
 
-	// Delete branch (admin only)
+	// Delete branch (admin only) — cascade-deletes every branch-scoped record and
+	// strips the branch from all users' role assignments, so no dangling data or
+	// references are left behind. Destructive; not atomic across chunks, but safe
+	// to re-run if interrupted.
 	deleteBranch: async (branchId: string): Promise<void> => {
 		try {
-			const branchDocRef = doc(db, "branches", branchId);
-			await deleteDoc(branchDocRef);
+			// Collections whose documents are scoped to one branch via `branchId`.
+			const SCOPED_COLLECTIONS = [
+				"ingredients",
+				"menuItems",
+				"orders",
+				"discounts",
+				"restockLogs",
+				"workSessions",
+				"auditLogs",
+			];
+
+			const ops: Array<
+				| { kind: "delete"; ref: DocumentReference }
+				| { kind: "update"; ref: DocumentReference; data: Record<string, unknown> }
+			> = [];
+
+			// 1. Queue every branch-scoped document for deletion.
+			for (const collectionName of SCOPED_COLLECTIONS) {
+				const snap = await getDocs(
+					query(collection(db, collectionName), where("branchId", "==", branchId))
+				);
+				snap.forEach((d) => ops.push({ kind: "delete", ref: d.ref }));
+			}
+
+			// 2. Strip the branch from users. roleAssignments is an array of objects,
+			//    which Firestore can't filter on directly, so scan users and patch the
+			//    affected ones (also clear currentBranchId if it points here).
+			const usersSnap = await getDocs(collection(db, "users"));
+			usersSnap.forEach((u) => {
+				const data = u.data();
+				const assignments = Array.isArray(data.roleAssignments)
+					? data.roleAssignments
+					: [];
+				const hasAssignment = assignments.some(
+					(a: { branchId?: string }) => a.branchId === branchId
+				);
+				const clearsCurrent = data.currentBranchId === branchId;
+				if (!hasAssignment && !clearsCurrent) return;
+
+				const patch: Record<string, unknown> = { updatedAt: Timestamp.now() };
+				if (hasAssignment) {
+					patch.roleAssignments = assignments.filter(
+						(a: { branchId?: string }) => a.branchId !== branchId
+					);
+				}
+				if (clearsCurrent) patch.currentBranchId = null;
+				ops.push({ kind: "update", ref: u.ref, data: patch });
+			});
+
+			// 3. The branch document itself, last.
+			ops.push({ kind: "delete", ref: doc(db, "branches", branchId) });
+
+			// Commit in chunks — a single Firestore batch is capped at 500 writes.
+			const CHUNK = 450;
+			for (let i = 0; i < ops.length; i += CHUNK) {
+				const batch = writeBatch(db);
+				for (const op of ops.slice(i, i + CHUNK)) {
+					if (op.kind === "delete") batch.delete(op.ref);
+					else batch.update(op.ref, op.data);
+				}
+				await batch.commit();
+			}
 		} catch (error) {
 			console.error("Error deleting branch:", error);
 			throw error;

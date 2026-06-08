@@ -4,12 +4,12 @@ import {
   getDocs,
   doc,
   updateDoc,
-  deleteDoc,
   query,
   orderBy,
   onSnapshot,
   Timestamp,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -74,7 +74,21 @@ export const updateCategory = async (
 
 export const deleteCategory = async (id: string): Promise<void> => {
   try {
-    await deleteDoc(doc(db, COLLECTION_NAME, id));
+    // Clear this category from anything that references it so we don't leave a
+    // dangling categoryId. menuItems/ingredients are branch-scoped but a
+    // category is global, so we sweep across all branches. (Reads already fall
+    // back to "Uncategorised", but this keeps the stored data clean.)
+    // NOTE: a single batch is capped at 500 writes; fine at this app's scale.
+    const [menuSnap, ingSnap] = await Promise.all([
+      getDocs(query(collection(db, 'menuItems'), where('categoryId', '==', id))),
+      getDocs(query(collection(db, 'ingredients'), where('categoryId', '==', id))),
+    ]);
+
+    const batch = writeBatch(db);
+    menuSnap.forEach((d) => batch.update(d.ref, { categoryId: '', updatedAt: Timestamp.now() }));
+    ingSnap.forEach((d) => batch.update(d.ref, { categoryId: '', updatedAt: Timestamp.now() }));
+    batch.delete(doc(db, COLLECTION_NAME, id));
+    await batch.commit();
   } catch (error) {
     console.error('Error deleting category:', error);
     throw new Error('Failed to delete category');

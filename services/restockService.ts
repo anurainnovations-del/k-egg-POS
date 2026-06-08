@@ -7,11 +7,11 @@ import {
   where,
   Timestamp,
   doc,
+  getDoc,
   updateDoc,
   increment,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { updateIngredient } from './ingredientService';
 
 export interface RestockLog {
   id?: string;
@@ -62,10 +62,18 @@ export const logRestock = async (
       createdAt: Timestamp.now(),
     };
 
+    // Verify the ingredient still exists before logging or updating stock.
+    // updateDoc() on a deleted ingredient would otherwise throw a generic
+    // failure (and we'd have already written an orphaned restock log).
+    const ingredientRef = doc(db, 'ingredients', ingredientId);
+    const ingredientSnap = await getDoc(ingredientRef);
+    if (!ingredientSnap.exists()) {
+      throw new Error('Cannot restock: this ingredient no longer exists.');
+    }
+
     const docRef = await addDoc(collection(db, COLLECTION_NAME), logData);
 
     // Update ingredient stock atomically
-    const ingredientRef = doc(db, 'ingredients', ingredientId);
     await updateDoc(ingredientRef, {
       stock: increment(quantityAdded),
       updatedAt: Timestamp.now()

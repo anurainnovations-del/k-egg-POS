@@ -4,7 +4,6 @@ import {
   getDocs,
   doc,
   updateDoc,
-  deleteDoc,
   query,
   orderBy,
   onSnapshot,
@@ -14,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { auditService } from './auditService';
+import { RecipeIngredient } from './menuItemService';
 
 export interface Ingredient {
   id?: string;
@@ -35,6 +35,36 @@ export interface Performer {
 }
 
 const COLLECTION_NAME = 'ingredients';
+const MENU_COLLECTION = 'menuItems';
+
+// ── Recipe reference maintenance ────────────────────────────────────────────
+// menuItems store a denormalized copy of each recipe ingredient (ingredientId
+// + ingredientName + unit). When an ingredient is renamed/re-unit'd or deleted,
+// these keep the recipe copies consistent so we never leave a dangling
+// reference — the root cause of the order/void write failures.
+
+/** Propagate ingredient field changes (name/unit) into referencing recipes. */
+const syncIngredientInRecipes = async (
+  branchId: string,
+  ingredientId: string,
+  patch: Partial<Pick<RecipeIngredient, 'ingredientName' | 'unit'>>
+): Promise<void> => {
+  const menuSnap = await getDocs(
+    query(collection(db, MENU_COLLECTION), where('branchId', '==', branchId))
+  );
+  const batch = writeBatch(db);
+  let changed = false;
+  menuSnap.forEach((m) => {
+    const recipe = (m.data().recipe ?? []) as RecipeIngredient[];
+    if (!recipe.some((r) => r.ingredientId === ingredientId)) return;
+    const next = recipe.map((r) =>
+      r.ingredientId === ingredientId ? { ...r, ...patch } : r
+    );
+    batch.update(m.ref, { recipe: next, updatedAt: Timestamp.now() });
+    changed = true;
+  });
+  if (changed) await batch.commit();
+};
 
 export const createIngredient = async (
   branchId: string,
@@ -137,6 +167,16 @@ export const updateIngredient = async (
     } else {
       await updateDoc(ref, { ...updates, branchId, updatedAt: Timestamp.now() });
     }
+
+    // If the name or unit changed, propagate to the denormalized copies stored
+    // in menu-item recipes so recipe lists and printed receipts stay correct.
+    // (Stock-only updates skip this, so the common path stays a single write.)
+    if (updates.name !== undefined || updates.unit !== undefined) {
+      await syncIngredientInRecipes(branchId, id, {
+        ...(updates.name !== undefined ? { ingredientName: updates.name } : {}),
+        ...(updates.unit !== undefined ? { unit: updates.unit } : {}),
+      });
+    }
   } catch (error) {
     console.error('Error updating ingredient:', error);
     throw new Error('Failed to update ingredient');
@@ -145,12 +185,33 @@ export const updateIngredient = async (
 
 export const deleteIngredient = async (id: string, branchId: string, performer?: Performer): Promise<void> => {
   try {
+    const current = await getDocs(query(collection(db, COLLECTION_NAME), where('__name__', '==', id)));
+    const beforeData = current.docs[0]?.data();
+
+    // Remove this ingredient from any menu-item recipe that references it, then
+    // delete the ingredient — all in one atomic batch. This prevents the
+    // dangling recipe reference that silently broke order/void writes.
+    const menuSnap = await getDocs(
+      query(collection(db, MENU_COLLECTION), where('branchId', '==', branchId))
+    );
+    const batch = writeBatch(db);
+    let affectedRecipes = 0;
+    menuSnap.forEach((m) => {
+      const recipe = (m.data().recipe ?? []) as RecipeIngredient[];
+      if (!recipe.some((r) => r.ingredientId === id)) return;
+      batch.update(m.ref, {
+        recipe: recipe.filter((r) => r.ingredientId !== id),
+        updatedAt: Timestamp.now(),
+      });
+      affectedRecipes++;
+    });
+    batch.delete(doc(db, COLLECTION_NAME, id));
+    await batch.commit();
+
     if (performer) {
-      const current = await getDocs(query(collection(db, COLLECTION_NAME), where('__name__', '==', id)));
-      const beforeData = current.docs[0]?.data();
-
-      await deleteDoc(doc(db, COLLECTION_NAME, id));
-
+      const recipeNote = affectedRecipes > 0
+        ? ` (removed from ${affectedRecipes} recipe${affectedRecipes > 1 ? 's' : ''})`
+        : '';
       await auditService.logAction({
         branchId,
         userId: performer.id,
@@ -158,10 +219,8 @@ export const deleteIngredient = async (id: string, branchId: string, performer?:
         action: "ENTITY_DELETE",
         entityType: "ingredient",
         entityId: id,
-        details: { before: beforeData, message: `Deleted ingredient: ${beforeData?.name}` }
+        details: { before: beforeData, message: `Deleted ingredient: ${beforeData?.name}${recipeNote}` }
       });
-    } else {
-      await deleteDoc(doc(db, COLLECTION_NAME, id));
     }
   } catch (error) {
     console.error('Error deleting ingredient:', error);
