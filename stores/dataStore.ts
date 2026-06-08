@@ -304,6 +304,9 @@ class DataStore {
 								workerName: data.workerName || "",
 								workerUid: data.workerUid || "",
 								branchId,
+								status: data.status || "COMPLETED",
+								voidedAt: data.voidedAt,
+								voidedBy: data.voidedBy,
 							});
 						}
 					});
