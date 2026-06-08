@@ -165,7 +165,7 @@ export async function formatReceiptESC(
 
 	// Order details
 	lines.push(esc([0x1b, 0x61, 0x00])); // Left align
-	lines.push(encoder.encode(`Order #: ${order.orderId.slice(-8).toUpperCase()}\n`));
+	lines.push(encoder.encode(`Order #: ${order.orderId.slice(-6).toUpperCase()}\n`));
 	lines.push(encoder.encode(`Date: ${order.date.toLocaleString()}\n`));
 	if (order.cashier) {
 		lines.push(encoder.encode(`Cashier: ${order.cashier}\n`));

@@ -196,7 +196,7 @@ const generateReceiptHtml = (order: any, paperWidth: '58mm' | '80mm') => {
         </div>
         
         <div>
-          <div>Order #: <span class="bold">${(order.orderId || '').slice(-8).toUpperCase()}</span></div>
+          <div>Order #: <span class="bold">${(order.orderId || '').slice(-6).toUpperCase()}</span></div>
           <div>Date: ${order.date ? new Date(order.date).toLocaleString() : new Date().toLocaleString()}</div>
           ${order.cashier ? `<div>Cashier: ${order.cashier}</div>` : ''}
         </div>
