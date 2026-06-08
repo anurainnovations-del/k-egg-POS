@@ -7,6 +7,7 @@ import {
   where,
   Timestamp,
   writeBatch,
+  increment,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import {
@@ -15,6 +16,7 @@ import {
   CartItem,
 } from './ingredientDeductionService';
 import { MenuItem } from './menuItemService';
+import { getIngredients } from './ingredientService';
 
 export interface OrderItem {
   menuItemId: string;
@@ -48,22 +50,6 @@ export interface Order {
   status?: 'COMPLETED' | 'VOIDED';
   voidedAt?: Timestamp;
   voidedBy?: string;
-}
-
-export interface StockDeltaActor {
-  uid: string | null;
-  name: string;
-}
-
-export interface IngredientStockDelta {
-  id: string;
-  ingredientId: string;
-  branchId: string;
-  quantityDelta: number;
-  reason: 'ORDER_DEDUCTION' | 'ORDER_VOID';
-  orderId: string;
-  createdAt: Timestamp;
-  createdBy: StockDeltaActor;
 }
 
 export const createOrder = async (
@@ -134,43 +120,43 @@ export const createOrder = async (
     // Save order
     batch.set(orderRef, order);
 
-    // Record ingredient deltas instead of overwriting stock values.
+    // Decrement ingredient stock atomically with the order. increment() is
+    // commutative, so it stays correct offline and across multiple terminals
+    // (no lost updates), and `stock` is the field the POS availability logic
+    // actually reads.
+    //
+    // Guard against recipes that reference a deleted/unknown ingredient: an
+    // update() on a non-existent doc makes Firestore reject the WHOLE batch on
+    // sync (even with permissive rules), which would silently roll back the
+    // order after the receipt already printed. So we only touch ids that exist.
     if (deductions.length > 0) {
-      const deltaByIngredient = new Map<string, number>();
-      deductions.forEach((d) => {
-        const current = deltaByIngredient.get(d.ingredientId) ?? 0;
-        deltaByIngredient.set(d.ingredientId, current - d.quantityUsed);
-      });
+      try {
+        const existing = await getIngredients(branchId);
+        const existingIds = new Set(existing.map((i) => i.id));
 
-      deltaByIngredient.forEach((quantityDelta, ingredientId) => {
-        const deltaRef = doc(
-          collection(db, 'ingredients', ingredientId, 'stockDeltas')
-        );
-        const delta: IngredientStockDelta = {
-          id: deltaRef.id,
-          ingredientId,
-          branchId,
-          quantityDelta,
-          reason: 'ORDER_DEDUCTION',
-          orderId: orderRef.id,
-          createdAt: now,
-          createdBy: {
-            uid: workerUid,
-            name: workerName,
-          },
-        };
-        batch.set(deltaRef, delta);
-        batch.update(doc(db, 'ingredients', ingredientId), {
-          updatedAt: now,
+        const usedByIngredient = new Map<string, number>();
+        deductions.forEach((d) => {
+          if (!existingIds.has(d.ingredientId)) return;
+          const current = usedByIngredient.get(d.ingredientId) ?? 0;
+          usedByIngredient.set(d.ingredientId, current + d.quantityUsed);
         });
-      });
+
+        usedByIngredient.forEach((quantityUsed, ingredientId) => {
+          batch.update(doc(db, 'ingredients', ingredientId), {
+            stock: increment(-quantityUsed),
+            updatedAt: now,
+          });
+        });
+      } catch (stockErr) {
+        // Never let stock bookkeeping block a sale whose receipt is printing.
+        console.error('Could not prepare stock deduction; saving order without it:', stockErr);
+      }
     }
 
-    // Commit optimistically so UI can advance without waiting for network.
-    const commitPromise = batch.commit();
-    void commitPromise.catch((error) => {
-      console.error('Error committing order batch:', error);
-    });
+    // With persistentLocalCache, commit() resolves against the local cache even
+    // when offline, so awaiting keeps the optimistic feel while still surfacing
+    // real write failures to the caller instead of silently dropping the order.
+    await batch.commit();
 
     return orderRef.id;
   } catch (error) {
@@ -286,43 +272,39 @@ export const voidOrder = async (
     const batch = writeBatch(db);
     const now = Timestamp.now();
 
-    if (orderToVoid.ingredientDeductions && orderToVoid.ingredientDeductions.length > 0) {
-      const deltaByIngredient = new Map<string, number>();
-      orderToVoid.ingredientDeductions.forEach((d) => {
-        const current = deltaByIngredient.get(d.ingredientId) ?? 0;
-        deltaByIngredient.set(d.ingredientId, current + d.quantityUsed);
-      });
-
-      deltaByIngredient.forEach((quantityDelta, ingredientId) => {
-        const deltaRef = doc(
-          collection(db, 'ingredients', ingredientId, 'stockDeltas')
-        );
-        const delta: IngredientStockDelta = {
-          id: deltaRef.id,
-          ingredientId,
-          branchId,
-          quantityDelta,
-          reason: 'ORDER_VOID',
-          orderId: orderId,
-          createdAt: now,
-          createdBy: {
-            uid: null,
-            name: voidedByWorkerName,
-          },
-        };
-        batch.set(deltaRef, delta);
-        batch.update(doc(db, 'ingredients', ingredientId), {
-          updatedAt: now,
-        });
-      });
-    }
-    
-    // Update the order status inside the batch
+    // Mark the order voided — the primary action, and the order doc is known to
+    // exist, so this update is always safe.
     batch.update(orderDocRef, {
       status: 'VOIDED',
       voidedAt: now,
       voidedBy: voidedByWorkerName
     });
+
+    // Restore the stock the order deducted (reverse of createOrder). Same guard
+    // as createOrder: skip ids that no longer exist so a deleted ingredient
+    // can't fail the batch and leave the order un-voided.
+    if (orderToVoid.ingredientDeductions && orderToVoid.ingredientDeductions.length > 0) {
+      try {
+        const existing = await getIngredients(branchId);
+        const existingIds = new Set(existing.map((i) => i.id));
+
+        const restoreByIngredient = new Map<string, number>();
+        orderToVoid.ingredientDeductions.forEach((d) => {
+          if (!existingIds.has(d.ingredientId)) return;
+          const current = restoreByIngredient.get(d.ingredientId) ?? 0;
+          restoreByIngredient.set(d.ingredientId, current + d.quantityUsed);
+        });
+
+        restoreByIngredient.forEach((quantityUsed, ingredientId) => {
+          batch.update(doc(db, 'ingredients', ingredientId), {
+            stock: increment(quantityUsed),
+            updatedAt: now,
+          });
+        });
+      } catch (stockErr) {
+        console.error('Could not prepare stock restore for void:', stockErr);
+      }
+    }
 
     // Commit batch atomically (which writes to cache first, resolving immediately if offline)
     await batch.commit();
