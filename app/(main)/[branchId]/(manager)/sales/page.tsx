@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
 	LineChart,
 	Line,
+	BarChart,
+	Bar,
+	Cell,
 	XAxis,
 	YAxis,
 	CartesianGrid,
@@ -15,7 +18,7 @@ import TopBar from "@/components/TopBar";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
 import { calculateDeductions } from "@/services/ingredientDeductionService";
 import { Order, voidOrder } from "@/services/orderService";
-import { formatCurrency } from "@/services/salesService";
+import { formatCurrency, formatNumber } from "@/services/salesService";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
 import SearchIcon from "@/components/icons/SearchIcon";
@@ -52,6 +55,7 @@ export default function SalesScreen() {
 	const [currentPage, setCurrentPage] = useState(1);
 	const [ordersPerPage] = useState(10);
 	const [searchTerm, setSearchTerm] = useState("");
+	const [productSort, setProductSort] = useState<"quantity" | "revenue" | "profit">("quantity");
 
 	const [voidModalOpen, setVoidModalOpen] = useState(false);
 	const [orderToVoid, setOrderToVoid] = useState<Order | null>(null);
@@ -218,11 +222,78 @@ export default function SalesScreen() {
 		}).sort((a, b) => b.quantityUsed - a.quantityUsed); // Sort by most consumed first
 	}, [allOrders, menuItems, ingredients, viewPeriod, getFilteredOrders, categories]);
 
+	// Per-product sales statistics for the selected period (excludes voided orders)
+	const productStats = useMemo(() => {
+		const filteredOrders = getFilteredOrders(viewPeriod);
+
+		const map = new Map<string, {
+			menuItemId: string;
+			name: string;
+			categoryId: string;
+			quantity: number;
+			revenue: number;
+			profit: number;
+			orderIds: Set<string>;
+		}>();
+
+		filteredOrders.forEach((order) => {
+			(order.items || []).forEach((item) => {
+				const key = item.menuItemId || item.name;
+				const entry = map.get(key) ?? {
+					menuItemId: item.menuItemId,
+					name: item.name,
+					categoryId: item.categoryId,
+					quantity: 0,
+					revenue: 0,
+					profit: 0,
+					orderIds: new Set<string>(),
+				};
+				entry.quantity += item.quantity || 0;
+				entry.revenue += item.subtotal || 0;
+				entry.profit += item.profit || 0;
+				entry.orderIds.add(order.id);
+				map.set(key, entry);
+			});
+		});
+
+		const totalRevenue = Array.from(map.values()).reduce((s, e) => s + e.revenue, 0);
+		const totalUnits = Array.from(map.values()).reduce((s, e) => s + e.quantity, 0);
+
+		const products = Array.from(map.values())
+			.map((e) => ({
+				menuItemId: e.menuItemId,
+				name: e.name,
+				categoryName: categories.find((c) => String(c.id) === String(e.categoryId))?.name ?? "Uncategorised",
+				quantity: e.quantity,
+				revenue: e.revenue,
+				profit: e.profit,
+				orderCount: e.orderIds.size,
+				revenueShare: totalRevenue > 0 ? (e.revenue / totalRevenue) * 100 : 0,
+			}))
+			.sort((a, b) => b[productSort] - a[productSort]);
+
+		return { products, totalRevenue, totalUnits };
+	}, [getFilteredOrders, viewPeriod, categories, productSort]);
+
+	const topProducts = useMemo(
+		() => productStats.products.slice(0, 8).map((p) => ({
+			...p,
+			shortName: p.name.length > 16 ? p.name.slice(0, 15) + "…" : p.name,
+		})),
+		[productStats]
+	);
+
 	const formatTooltipValue = (value: number | string, name: string): [string | number, string] => {
 		if (name === "revenue" || name === "profit") {
 			return [formatCurrency(Number(value)), name === "revenue" ? "Revenue" : "Profit"];
 		}
 		return [value, name === "orders" ? "Orders" : name];
+	};
+
+	const formatProductTooltipValue = (value: number | string): [string, string] => {
+		const num = Number(value);
+		if (productSort === "quantity") return [formatNumber(num), "Units"];
+		return [formatCurrency(num), productSort === "revenue" ? "Revenue" : "Profit"];
 	};
 
 	const filteredOrdersForTable = allOrders.filter((order) => {
@@ -457,6 +528,110 @@ export default function SalesScreen() {
 											</tbody>
 										</table>
 									</div>
+								)}
+							</div>
+
+							{/* Product Sales Performance */}
+							<div className='bg-[var(--primary)] p-6 rounded-xl shadow-md border border-[var(--border)] mx-6'>
+								<div className='flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4'>
+									<div>
+										<h3 className='text-lg font-semibold text-[var(--secondary)]'>Product Performance</h3>
+										<p className='text-xs text-gray-400 mt-1'>
+											Best-selling products during this period ({viewPeriod === "day" ? "Today" : viewPeriod === "week" ? "7 Days" : "30 Days"})
+										</p>
+									</div>
+									<div className='flex bg-gray-100 rounded-lg p-1 space-x-1 self-start'>
+										{([["quantity", "Units"], ["revenue", "Revenue"], ["profit", "Profit"]] as const).map(([key, label]) => (
+											<button
+												key={key}
+												onClick={() => setProductSort(key)}
+												className={`px-4 py-1.5 text-xs rounded-md transition-all ${productSort === key ? "bg-white text-[var(--secondary)] font-bold shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+											>
+												{label}
+											</button>
+										))}
+									</div>
+								</div>
+
+								{productStats.products.length === 0 ? (
+									<div className='py-8 text-center text-sm text-gray-500 italic'>
+										No products sold in this period.
+									</div>
+								) : (
+									<>
+										{/* Summary chips */}
+										<div className='grid grid-cols-2 md:grid-cols-3 gap-3 mb-6'>
+											<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)]'>
+												<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Top Product</p>
+												<p className='text-sm font-bold text-[var(--secondary)] mt-1 truncate'>{productStats.products[0]?.name ?? "—"}</p>
+												<p className='text-xs text-gray-500 mt-0.5'>{formatNumber(productStats.products[0]?.quantity ?? 0)} units · {formatCurrency(productStats.products[0]?.revenue ?? 0)}</p>
+											</div>
+											<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)]'>
+												<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Products Sold</p>
+												<p className='text-2xl font-black text-[var(--secondary)] mt-1'>{formatNumber(productStats.products.length)}</p>
+												<p className='text-xs text-gray-500 mt-0.5'>unique items</p>
+											</div>
+											<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)] col-span-2 md:col-span-1'>
+												<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Units Sold</p>
+												<p className='text-2xl font-black text-[var(--secondary)] mt-1'>{formatNumber(productStats.totalUnits)}</p>
+												<p className='text-xs text-gray-500 mt-0.5'>total items sold</p>
+											</div>
+										</div>
+
+										{/* Top products chart */}
+										<div className='h-72 mb-6'>
+											<ResponsiveContainer width='100%' height='100%'>
+												<BarChart data={topProducts} layout='vertical' margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+													<CartesianGrid strokeDasharray='3 3' horizontal={false} stroke='#f0f0f0' />
+													<XAxis type='number' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
+													<YAxis type='category' dataKey='shortName' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} width={110} />
+													<Tooltip
+														cursor={{ fill: "rgba(0,0,0,0.03)" }}
+														contentStyle={{ backgroundColor: "#fff", borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+														// eslint-disable-next-line @typescript-eslint/no-explicit-any
+														formatter={formatProductTooltipValue as any}
+													/>
+													<Bar dataKey={productSort} radius={[0, 6, 6, 0]} animationDuration={800}>
+														{topProducts.map((_, i) => (
+															<Cell key={i} fill='var(--accent)' />
+														))}
+													</Bar>
+												</BarChart>
+											</ResponsiveContainer>
+										</div>
+
+										{/* Ranked table */}
+										<div className='overflow-x-auto'>
+											<table className='w-full text-sm text-[var(--secondary)]'>
+												<thead className='bg-gray-50 border-b border-[var(--border)]'>
+													<tr>
+														<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>#</th>
+														<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Product</th>
+														<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Category</th>
+														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Units</th>
+														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Orders</th>
+														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Revenue</th>
+														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Profit</th>
+														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>% of Sales</th>
+													</tr>
+												</thead>
+												<tbody className='divide-y divide-[var(--border)]'>
+													{productStats.products.map((p, i) => (
+														<tr key={p.menuItemId || p.name} className='hover:bg-gray-50/50 transition-colors'>
+															<td className='px-4 py-3 font-black text-gray-400'>{i + 1}</td>
+															<td className='px-4 py-3 font-semibold'>{p.name}</td>
+															<td className='px-4 py-3 text-xs text-gray-500'>{p.categoryName}</td>
+															<td className='px-4 py-3 text-right font-black'>{formatNumber(p.quantity)}</td>
+															<td className='px-4 py-3 text-right text-gray-600'>{formatNumber(p.orderCount)}</td>
+															<td className='px-4 py-3 text-right font-bold'>{formatCurrency(p.revenue)}</td>
+															<td className='px-4 py-3 text-right font-bold text-green-600'>{formatCurrency(p.profit)}</td>
+															<td className='px-4 py-3 text-right text-xs text-gray-500'>{p.revenueShare.toFixed(1)}%</td>
+														</tr>
+													))}
+												</tbody>
+											</table>
+										</div>
+									</>
 								)}
 							</div>
 

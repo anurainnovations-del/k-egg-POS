@@ -42,6 +42,8 @@ export default function SettingsScreen() {
 		setPrinterType,
 		paperWidth,
 		setPaperWidth,
+		printStoreCopy,
+		setPrintStoreCopy,
 		isBluetoothSupported
 	} = useBluetoothPrinter();
 
@@ -312,6 +314,29 @@ export default function SettingsScreen() {
 									</button>
 								</div>
 							)}
+
+							{/* Store copy toggle (applies to both printer types) */}
+							<div className='mt-5 pt-5 border-t border-[var(--border)] flex items-center justify-between gap-4'>
+								<div>
+									<p className='text-sm font-bold text-[var(--secondary)]'>Print store copy</p>
+									<p className='text-xs text-gray-500 mt-0.5 leading-relaxed'>Print a second receipt labelled <strong>STORE COPY</strong> for your records after the customer copy.</p>
+								</div>
+								<button
+									type='button'
+									role='switch'
+									aria-checked={printStoreCopy}
+									onClick={() => setPrintStoreCopy(!printStoreCopy)}
+									className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+										printStoreCopy ? 'bg-[var(--accent)]' : 'bg-gray-300'
+									}`}
+								>
+									<span
+										className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+											printStoreCopy ? 'translate-x-5' : 'translate-x-0.5'
+										}`}
+									/>
+								</button>
+							</div>
 						</div>
 
 						{/* Save Actions */}

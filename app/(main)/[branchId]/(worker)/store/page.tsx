@@ -11,7 +11,6 @@ import { useBluetoothPrinter } from "@/contexts/BluetoothContext";
 import { useTimeTracking } from "@/contexts/TimeTrackingContext";
 import { Discount } from "@/services/discountService";
 import { formatCurrency } from "@/lib/currency_formatter";
-import { formatReceiptWithLogo } from "@/lib/esc_formatter";
 import { loadSettingsFromLocal } from "@/services/settingsService";
 import { AnimatePresence, motion } from "motion/react";
 import TopBar from "@/components/TopBar";
@@ -64,7 +63,7 @@ function SuccessToast({ show, onClose, orderId }: { show: boolean; onClose: () =
 export default function StoreScreen() {
   const { user } = useAuth();
   const { currentBranch } = useBranch();
-  const { printReceipt, openCashDrawer, bluetoothDevice, connectToBluetoothPrinter, disconnectPrinter } = useBluetoothPrinter();
+  const { printOrderReceipt, openCashDrawer, bluetoothDevice, connectToBluetoothPrinter, disconnectPrinter } = useBluetoothPrinter();
   const timeTracking = useTimeTracking({ autoRefresh: true });
 
   const { menuItems, ingredients, categories, loading: realtimeLoading } = useRealtimeData();
@@ -194,8 +193,7 @@ export default function StoreScreen() {
           storeName: "K-egg POS", branchName: currentBranch.name,
         };
 
-        const bytes = await formatReceiptWithLogo(orderData);
-        const printSuccess = await printReceipt(bytes, orderData);
+        const printSuccess = await printOrderReceipt(orderData);
         if (!printSuccess) {
           console.warn("Receipt print failed (returned false). Check printer connection in Settings.");
         }
