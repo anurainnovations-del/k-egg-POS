@@ -5,7 +5,9 @@ import { Timestamp } from "firebase/firestore";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRealtimeData } from "@/contexts/RealtimeDataContext";
+import { useBluetoothPrinter } from "@/contexts/BluetoothContext";
 import { Order, voidOrder } from "@/services/orderService";
+import { orderToReceiptData } from "@/lib/receipt_helpers";
 import { formatCurrency } from "@/lib/currency_formatter";
 import ManagerOverrideModal from "@/components/ManagerOverrideModal";
 import TopBar from "@/components/TopBar";
@@ -34,13 +36,17 @@ export default function WorkerOrdersPage() {
 	const { user } = useAuth();
 	
 	const { orders: allOrders, loading: realtimeLoading } = useRealtimeData();
+	const { reprintReceipt } = useBluetoothPrinter();
 	const loading = realtimeLoading.orders;
 
 	const [searchTerm, setSearchTerm] = useState("");
-	
+
 	// Voiding state
 	const [orderToVoid, setOrderToVoid] = useState<Order | null>(null);
 	const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+
+	// Reprint state (tracks which order is currently printing)
+	const [reprintingId, setReprintingId] = useState<string | null>(null);
 
 	// Get today's orders
 	const todaysOrders = useMemo(() => {
@@ -66,6 +72,20 @@ export default function WorkerOrdersPage() {
 	const handleVoidClick = (order: Order) => {
 		setOrderToVoid(order);
 		setIsOverrideModalOpen(true);
+	};
+
+	const handleReprint = async (order: Order) => {
+		if (reprintingId) return;
+		setReprintingId(order.id);
+		try {
+			const ok = await reprintReceipt(orderToReceiptData(order, currentBranch?.name));
+			if (!ok) alert("Reprint failed. Please check the printer connection in Settings.");
+		} catch (error) {
+			console.error("Failed to reprint receipt:", error);
+			alert("Reprint failed. Please check the printer connection in Settings.");
+		} finally {
+			setReprintingId(null);
+		}
 	};
 
 	const executeVoid = async () => {
@@ -167,12 +187,25 @@ export default function WorkerOrdersPage() {
 											</td>
 											<td className='px-6 py-4 whitespace-nowrap text-center'>
 												{order.status !== 'VOIDED' && (
-													<button 
-														onClick={() => handleVoidClick(order)}
-														className="text-[10px] text-red-500 hover:text-white border border-red-500 hover:bg-red-500 px-3 py-1 rounded-lg font-bold transition-all"
-													>
-														VOID
-													</button>
+													<div className="flex items-center justify-center gap-2">
+														<button
+															onClick={() => handleReprint(order)}
+															disabled={reprintingId === order.id}
+															title="Reprint receipt"
+															className="text-[10px] text-[var(--accent)] hover:text-white border border-[var(--accent)] hover:bg-[var(--accent)] px-3 py-1 rounded-lg font-bold transition-all disabled:opacity-50 inline-flex items-center gap-1"
+														>
+															<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+															</svg>
+															{reprintingId === order.id ? "…" : "REPRINT"}
+														</button>
+														<button
+															onClick={() => handleVoidClick(order)}
+															className="text-[10px] text-red-500 hover:text-white border border-red-500 hover:bg-red-500 px-3 py-1 rounded-lg font-bold transition-all"
+														>
+															VOID
+														</button>
+													</div>
 												)}
 											</td>
 										</tr>

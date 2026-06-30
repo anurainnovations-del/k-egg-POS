@@ -34,7 +34,7 @@ export default function SidebarNav() {
 
 	const params = useParams();
 	const branchIdFromUrl = typeof params.branchId === "string" ? params.branchId : null;
-
+	
 	const isManagerForCurrentBranch = currentBranch
 		? getUserRoleForBranch(currentBranch.id) === "manager"
 		: false;

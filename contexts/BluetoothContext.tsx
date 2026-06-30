@@ -61,6 +61,7 @@ interface BluetoothContextType {
   testPrint: () => Promise<void>;
   printReceipt: (receiptData: Uint8Array, orderData?: any) => Promise<boolean>;
   printOrderReceipt: (orderData: ReceiptOrderData) => Promise<boolean>;
+  reprintReceipt: (orderData: ReceiptOrderData) => Promise<boolean>;
   openCashDrawer: () => Promise<boolean>;
   printerType: 'bluetooth' | 'web_print';
   setPrinterType: (type: 'bluetooth' | 'web_print') => void;
@@ -694,13 +695,15 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
   };
 
   // High-level entry point for printing an order's receipt(s). Prints a customer
-  // copy and, when enabled, a store copy. The cash drawer is only kicked once
-  // (on the first copy). Works for both Bluetooth (ESC/POS) and web print.
+  // copy and, when enabled, a store copy and a kitchen copy. The cash drawer is
+  // only kicked once (on the first copy). Works for both Bluetooth (ESC/POS) and
+  // web print.
   const printOrderReceipt = async (orderData: ReceiptOrderData): Promise<boolean> => {
     const copies: ReceiptOrderData[] = printStoreCopy
       ? [
           { ...orderData, copyLabel: 'CUSTOMER COPY' },
           { ...orderData, copyLabel: 'STORE COPY' },
+          { ...orderData, copyLabel: 'KITCHEN COPY' },
         ]
       : [orderData];
 
@@ -714,7 +717,7 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
     }
 
     // Bluetooth: build ESC/POS bytes per copy (kick the drawer only on the
-    // first), then send as a single byte stream so both receipts print.
+    // first), then send as a single byte stream so every copy prints.
     const chunks: Uint8Array[] = [];
     for (let i = 0; i < copies.length; i++) {
       chunks.push(await formatReceiptWithLogo(copies[i], i === 0));
@@ -729,6 +732,27 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
     }
 
     return await printReceipt(merged);
+  };
+
+  // Reprints a single additional copy of an existing order's receipt, with no
+  // copy label. Unlike printOrderReceipt this always prints exactly one copy
+  // (regardless of the store-copy setting) and never kicks the cash drawer.
+  // Used by the post-order success modal and the orders page reprint action.
+  const reprintReceipt = async (orderData: ReceiptOrderData): Promise<boolean> => {
+    const copy: ReceiptOrderData = { ...orderData, copyLabel: undefined };
+
+    if (printerType === 'web_print') {
+      const html = buildReceiptDocument(
+        [generateReceiptBody(copy)],
+        paperWidth,
+        `Receipt - ${orderData.orderId || ''}`
+      );
+      return await printHtmlViaIframe(html);
+    }
+
+    // Bluetooth: one copy, no drawer kick.
+    const bytes = await formatReceiptWithLogo(copy, false);
+    return await printReceipt(bytes);
   };
 
   const openCashDrawer = async (): Promise<boolean> => {
@@ -819,6 +843,7 @@ export const BluetoothProvider: React.FC<BluetoothProviderProps> = ({ children }
     testPrint,
     printReceipt,
     printOrderReceipt,
+    reprintReceipt,
     openCashDrawer,
     printerType,
     setPrinterType,

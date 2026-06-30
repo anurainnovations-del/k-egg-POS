@@ -12,6 +12,7 @@ import { useTimeTracking } from "@/contexts/TimeTrackingContext";
 import { Discount } from "@/services/discountService";
 import { formatCurrency } from "@/lib/currency_formatter";
 import { loadSettingsFromLocal } from "@/services/settingsService";
+import { ReceiptOrderData } from "@/lib/esc_formatter";
 import { AnimatePresence, motion } from "motion/react";
 import TopBar from "@/components/TopBar";
 import MobileTopBar from "@/components/MobileTopBar";
@@ -33,29 +34,74 @@ interface CartItem {
   categoryId: string;
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
-function SuccessToast({ show, onClose, orderId }: { show: boolean; onClose: () => void; orderId: string }) {
-  useEffect(() => {
-    if (show) { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }
-  }, [show, onClose]);
-  if (!show) return null;
+// ─── Success Modal ──────────────────────────────────────────────────────────
+function SuccessModal({
+  show, orderId, total, change, onReprint, isReprinting, onClose,
+}: {
+  show: boolean;
+  orderId: string;
+  total: number;
+  change: number;
+  onReprint: () => void;
+  isReprinting: boolean;
+  onClose: () => void;
+}) {
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top duration-300">
-      <div className="bg-[var(--success)] text-white px-6 py-4 rounded-xl shadow-xl flex items-center gap-3 min-w-[300px]">
-        <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <div className="flex-1">
-          <div className="font-semibold">Order Placed!</div>
-          <div className="text-sm opacity-90">Order #{orderId.slice(-6).toUpperCase()}</div>
-        </div>
-        <button onClick={onClose} className="text-white/80 hover:text-white" aria-label="Close notification">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-    </div>
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-[var(--primary)] rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+          >
+            <div className="flex flex-col items-center text-center px-6 pt-8 pb-6">
+              <div className="w-16 h-16 rounded-full bg-[var(--success)]/15 flex items-center justify-center mb-4">
+                <svg className="w-9 h-9 text-[var(--success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-black text-[var(--secondary)]">Order Placed!</h3>
+              <p className="text-sm text-gray-500 mt-1">Order #{orderId.slice(-6).toUpperCase()}</p>
+
+              <div className="w-full mt-5 space-y-2 bg-[var(--light-accent)] rounded-xl p-4">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Total</span>
+                  <span className="font-bold text-[var(--secondary)]">{formatCurrency(total)}</span>
+                </div>
+                {change > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Change</span>
+                    <span className="font-black text-[var(--success)]">{formatCurrency(change)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 pb-6 flex flex-col gap-2">
+              <button
+                onClick={onReprint}
+                disabled={isReprinting}
+                className="w-full py-3 rounded-xl border-2 border-[var(--accent)] text-[var(--accent)] font-bold hover:bg-[var(--light-accent)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                {isReprinting ? "Printing…" : "Print additional receipt"}
+              </button>
+              <button
+                onClick={onClose}
+                className="w-full py-3 rounded-xl bg-[var(--accent)] text-white font-bold hover:opacity-90 transition-all"
+              >
+                New Order
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -63,7 +109,7 @@ function SuccessToast({ show, onClose, orderId }: { show: boolean; onClose: () =
 export default function StoreScreen() {
   const { user } = useAuth();
   const { currentBranch } = useBranch();
-  const { printOrderReceipt, openCashDrawer, bluetoothDevice, connectToBluetoothPrinter, disconnectPrinter } = useBluetoothPrinter();
+  const { printOrderReceipt, reprintReceipt, openCashDrawer, bluetoothDevice, connectToBluetoothPrinter, disconnectPrinter } = useBluetoothPrinter();
   const timeTracking = useTimeTracking({ autoRefresh: true });
 
   const { menuItems, ingredients, categories, loading: realtimeLoading } = useRealtimeData();
@@ -80,8 +126,9 @@ export default function StoreScreen() {
   const [discountCode, setDiscountCode] = useState("");
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [successOrderId, setSuccessOrderId] = useState("");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [lastOrderData, setLastOrderData] = useState<ReceiptOrderData | null>(null);
+  const [isReprinting, setIsReprinting] = useState(false);
   const [showOrderMenu, setShowOrderMenu] = useState(false);
 
   const [receivedAmount, setReceivedAmount] = useState<number | "">("");
@@ -183,7 +230,7 @@ export default function StoreScreen() {
         const payment = typeof receivedAmount === "number" ? receivedAmount : total;
         const change = Math.max(0, payment - total);
 
-        const orderData = {
+        const orderData: ReceiptOrderData = {
           orderId, date: new Date(),
           items: cart.map((c) => ({ name: c.name, qty: c.quantity, price: c.price, total: c.price * c.quantity })),
           subtotal, discount: discountAmount, appliedDiscountCode: appliedDiscount?.discount_code ?? "",
@@ -193,6 +240,9 @@ export default function StoreScreen() {
           storeName: "K-egg POS", branchName: currentBranch.name,
         };
 
+        // Keep the receipt data so the success modal can reprint extra copies.
+        setLastOrderData(orderData);
+
         const printSuccess = await printOrderReceipt(orderData);
         if (!printSuccess) {
           console.warn("Receipt print failed (returned false). Check printer connection in Settings.");
@@ -201,8 +251,7 @@ export default function StoreScreen() {
         console.error("Receipt generation/printing threw an error:", printErr);
       }
 
-      setSuccessOrderId(orderId);
-      setShowToast(true);
+      setShowSuccessModal(true);
       clearCart();
       setShowConfirm(false);
       setShowOrderMenu(false); // Close mobile overlay after successful order
@@ -211,6 +260,21 @@ export default function StoreScreen() {
       alert("Failed to place order. Please try again.");
     } finally {
       setIsPlacingOrder(false);
+    }
+  };
+
+  // Reprint an extra copy of the just-placed order from the success modal.
+  const handleReprintReceipt = async () => {
+    if (!lastOrderData || isReprinting) return;
+    setIsReprinting(true);
+    try {
+      const ok = await reprintReceipt(lastOrderData);
+      if (!ok) alert("Reprint failed. Please check the printer connection in Settings.");
+    } catch (err) {
+      console.error("Reprint failed:", err);
+      alert("Reprint failed. Please check the printer connection in Settings.");
+    } finally {
+      setIsReprinting(false);
     }
   };
 
@@ -373,7 +437,15 @@ export default function StoreScreen() {
 
   return (
     <ViewOnlyWrapper branchId={currentBranch?.id} pageName="store">
-      <SuccessToast show={showToast} onClose={() => setShowToast(false)} orderId={successOrderId} />
+      <SuccessModal
+        show={showSuccessModal}
+        orderId={lastOrderData?.orderId ?? ""}
+        total={lastOrderData?.total ?? 0}
+        change={lastOrderData?.change ?? 0}
+        onReprint={handleReprintReceipt}
+        isReprinting={isReprinting}
+        onClose={() => setShowSuccessModal(false)}
+      />
 
       {/* Confirm Modal */}
       <AnimatePresence>

@@ -315,11 +315,11 @@ export default function SettingsScreen() {
 								</div>
 							)}
 
-							{/* Store copy toggle (applies to both printer types) */}
+							{/* Store + kitchen copy toggle (applies to both printer types) */}
 							<div className='mt-5 pt-5 border-t border-[var(--border)] flex items-center justify-between gap-4'>
 								<div>
-									<p className='text-sm font-bold text-[var(--secondary)]'>Print store copy</p>
-									<p className='text-xs text-gray-500 mt-0.5 leading-relaxed'>Print a second receipt labelled <strong>STORE COPY</strong> for your records after the customer copy.</p>
+									<p className='text-sm font-bold text-[var(--secondary)]'>Print store &amp; kitchen copies</p>
+									<p className='text-xs text-gray-500 mt-0.5 leading-relaxed'>After the customer copy, also print a <strong>STORE COPY</strong> for your records and a <strong>KITCHEN COPY</strong> for order prep.</p>
 								</div>
 								<button
 									type='button'
