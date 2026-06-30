@@ -274,28 +274,46 @@ export default function ManagerIngredientsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex gap-3">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ingredients..." 
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ingredients..."
               className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm bg-white focus:ring-2 focus:ring-[var(--accent)] outline-none min-w-[240px]" />
-            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm bg-white outline-none">
-              <option value="">All Categories</option>
-              {ingCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCategoriesOpen(true)}
+                className="bg-white border border-[var(--border)] text-[var(--secondary)]/70 px-4 py-2 rounded-xl font-bold text-xs shadow-sm hover:bg-gray-50 active:scale-95 transition-all flex items-center gap-2"
+              >
+                CATEGORIES
+              </button>
+              <button
+                onClick={() => { setSelectedIng(null); setModalOpen(true); }}
+                className="bg-[var(--accent)] text-[var(--secondary)] px-5 py-2 rounded-xl font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+              >
+                <PlusIcon className="w-4 h-4" /> ADD INGREDIENT
+              </button>
+            </div>
           </div>
-          <div className="flex gap-3">
-            <button 
-              onClick={() => setCategoriesOpen(true)}
-              className="bg-white border border-[var(--border)] text-[var(--secondary)]/70 px-4 py-2 rounded-xl font-bold text-xs shadow-sm hover:bg-gray-50 active:scale-95 transition-all flex items-center gap-2"
-            >
-              CATEGORIES
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            <button
+              onClick={() => setFilterCat("")}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                !filterCat ? "bg-[var(--accent)] text-[var(--secondary)]" : "bg-white shadow-sm text-[var(--secondary)]/60 hover:bg-[var(--light-accent)]"
+              }`}>
+              All
             </button>
-            <button 
-              onClick={() => { setSelectedIng(null); setModalOpen(true); }}
-              className="bg-[var(--accent)] text-[var(--secondary)] px-5 py-2 rounded-xl font-bold shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-            >
-              <PlusIcon className="w-4 h-4" /> ADD INGREDIENT
-            </button>
+            {ingCategories.map((c) => {
+              const active = filterCat === c.id;
+              return (
+                <button key={c.id}
+                  onClick={() => setFilterCat(active ? "" : c.id)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border-l-4 ${
+                    active ? "bg-[var(--secondary)]/10 text-[var(--secondary)]" : "bg-white shadow-sm text-[var(--secondary)]/60 hover:bg-[var(--light-accent)]"
+                  }`}
+                  style={{ borderColor: c.color }}>
+                  {c.name}
+                </button>
+              );
+            })}
           </div>
         </div>
 

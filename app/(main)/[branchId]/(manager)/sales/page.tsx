@@ -22,6 +22,7 @@ import { formatCurrency, formatNumber } from "@/services/salesService";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
 import SearchIcon from "@/components/icons/SearchIcon";
+import ChevronIcon from "@/components/icons/ChevronIcon";
 import SalesIcon from "@/components/icons/SidebarNav/SalesIcon";
 import ViewOnlyWrapper from "@/components/ViewOnlyWrapper";
 import { AnimatePresence, motion } from "motion/react";
@@ -55,7 +56,11 @@ export default function SalesScreen() {
 	const [currentPage, setCurrentPage] = useState(1);
 	const [ordersPerPage] = useState(10);
 	const [searchTerm, setSearchTerm] = useState("");
-	const [productSort, setProductSort] = useState<"quantity" | "revenue" | "profit">("quantity");
+	const [productSort, setProductSort] = useState<"quantity" | "revenue">("quantity");
+
+	const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+	const toggleSection = (key: string) =>
+		setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
 	const [voidModalOpen, setVoidModalOpen] = useState(false);
 	const [orderToVoid, setOrderToVoid] = useState<Order | null>(null);
@@ -232,7 +237,6 @@ export default function SalesScreen() {
 			categoryId: string;
 			quantity: number;
 			revenue: number;
-			profit: number;
 			orderIds: Set<string>;
 		}>();
 
@@ -245,12 +249,10 @@ export default function SalesScreen() {
 					categoryId: item.categoryId,
 					quantity: 0,
 					revenue: 0,
-					profit: 0,
 					orderIds: new Set<string>(),
 				};
 				entry.quantity += item.quantity || 0;
 				entry.revenue += item.subtotal || 0;
-				entry.profit += item.profit || 0;
 				entry.orderIds.add(order.id);
 				map.set(key, entry);
 			});
@@ -266,7 +268,6 @@ export default function SalesScreen() {
 				categoryName: categories.find((c) => String(c.id) === String(e.categoryId))?.name ?? "Uncategorised",
 				quantity: e.quantity,
 				revenue: e.revenue,
-				profit: e.profit,
 				orderCount: e.orderIds.size,
 				revenueShare: totalRevenue > 0 ? (e.revenue / totalRevenue) * 100 : 0,
 			}))
@@ -293,7 +294,7 @@ export default function SalesScreen() {
 	const formatProductTooltipValue = (value: number | string): [string, string] => {
 		const num = Number(value);
 		if (productSort === "quantity") return [formatNumber(num), "Units"];
-		return [formatCurrency(num), productSort === "revenue" ? "Revenue" : "Profit"];
+		return [formatCurrency(num), "Revenue"];
 	};
 
 	const filteredOrdersForTable = allOrders.filter((order) => {
@@ -438,9 +439,17 @@ export default function SalesScreen() {
 
 							{/* Chart */}
 							<div className='bg-[var(--primary)] p-6 rounded-xl shadow-md border border-[var(--border)] mx-6'>
-								<div className='flex items-center justify-between mb-6'>
+								<div className='flex items-center justify-between'>
 									<div>
-										<h3 className='text-lg font-semibold text-[var(--secondary)]'>Performance Trends</h3>
+										<button
+											type='button'
+											onClick={() => toggleSection("chart")}
+											aria-expanded={!collapsed.chart}
+											className='flex items-center gap-2 text-left group'
+										>
+											<ChevronIcon className={`w-4 h-4 text-gray-400 transition-transform duration-200 group-hover:text-[var(--secondary)] ${collapsed.chart ? "-rotate-90" : ""}`} />
+											<h3 className='text-lg font-semibold text-[var(--secondary)]'>Performance Trends</h3>
+										</button>
 										<div className='flex bg-gray-100 rounded-lg p-1 mt-2 space-x-1'>
 											{(["day", "week", "month"] as ViewPeriod[]).map((p) => (
 												<button
@@ -454,94 +463,136 @@ export default function SalesScreen() {
 										</div>
 									</div>
 								</div>
-								<div className='h-72'>
-									<ResponsiveContainer width='100%' height='100%'>
-										<LineChart data={timeSeriesData}>
-											<CartesianGrid strokeDasharray='3 3' stroke='#f0f0f0' />
-											<XAxis dataKey='label' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
-											<YAxis stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
-											<Tooltip
-												contentStyle={{ backgroundColor: "#fff", borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
-												// eslint-disable-next-line @typescript-eslint/no-explicit-any
-												formatter={formatTooltipValue as any}
-											/>
-											<Line type='monotone' dataKey='revenue' stroke='var(--accent)' strokeWidth={3} dot={false} animationDuration={1000} />
-											<Line type='monotone' dataKey='profit' stroke='#10b981' strokeWidth={2} dot={false} strokeDasharray="5 5" />
-										</LineChart>
-									</ResponsiveContainer>
-								</div>
+								<AnimatePresence initial={false}>
+									{!collapsed.chart && (
+										<motion.div
+											key='chart-content'
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={{ duration: 0.25, ease: "easeInOut" }}
+											className='overflow-hidden'
+										>
+											<div className='h-72 mt-6'>
+												<ResponsiveContainer width='100%' height='100%'>
+													<LineChart data={timeSeriesData}>
+														<CartesianGrid strokeDasharray='3 3' stroke='#f0f0f0' />
+														<XAxis dataKey='label' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
+														<YAxis stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
+														<Tooltip
+															contentStyle={{ backgroundColor: "#fff", borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+															// eslint-disable-next-line @typescript-eslint/no-explicit-any
+															formatter={formatTooltipValue as any}
+														/>
+														<Line type='monotone' dataKey='revenue' stroke='var(--accent)' strokeWidth={3} dot={false} animationDuration={1000} />
+														<Line type='monotone' dataKey='profit' stroke='#10b981' strokeWidth={2} dot={false} strokeDasharray="5 5" />
+													</LineChart>
+												</ResponsiveContainer>
+											</div>
+										</motion.div>
+									)}
+								</AnimatePresence>
 							</div>
 
 							{/* Ingredient Consumption Analytics */}
 							<div className='bg-[var(--primary)] p-6 rounded-xl shadow-md border border-[var(--border)] mx-6'>
-								<div className='flex items-center justify-between mb-4'>
+								<button
+									type='button'
+									onClick={() => toggleSection("ingredients")}
+									aria-expanded={!collapsed.ingredients}
+									className='flex items-start gap-2 text-left group w-full'
+								>
+									<ChevronIcon className={`w-4 h-4 mt-1 shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-[var(--secondary)] ${collapsed.ingredients ? "-rotate-90" : ""}`} />
 									<div>
 										<h3 className='text-lg font-semibold text-[var(--secondary)]'>Ingredient Consumption</h3>
 										<p className='text-xs text-gray-400 mt-1'>
 											Total ingredients used in orders during this period ({viewPeriod === "day" ? "Today" : viewPeriod === "week" ? "7 Days" : "30 Days"})
 										</p>
 									</div>
-								</div>
+								</button>
 
-								{ingredientConsumption.length === 0 ? (
-									<div className='py-8 text-center text-sm text-gray-500 italic'>
-										No ingredients consumed in this period.
-									</div>
-								) : (
-									<div className='overflow-x-auto'>
-										<table className='w-full text-sm text-[var(--secondary)]'>
-											<thead className='bg-gray-50 border-b border-[var(--border)]'>
-												<tr>
-													<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Ingredient</th>
-													<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Category</th>
-													<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Quantity Consumed</th>
-													<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Current Stock</th>
-													<th className='px-4 py-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Stock Status</th>
-												</tr>
-											</thead>
-											<tbody className='divide-y divide-[var(--border)]'>
-												{ingredientConsumption.map((item) => {
-													const isOut = item.currentStock === 0;
-													const isLow = item.currentStock <= item.lowStockThreshold;
-													return (
-														<tr key={item.ingredientId} className='hover:bg-gray-50/50 transition-colors'>
-															<td className='px-4 py-3 font-semibold'>{item.ingredientName}</td>
-															<td className='px-4 py-3 text-xs text-gray-500'>{item.categoryName}</td>
-															<td className='px-4 py-3 text-right font-black text-[var(--secondary)]'>
-																{item.quantityUsed} <span className='text-[10px] text-gray-400 font-normal'>{item.unit}</span>
-															</td>
-															<td className='px-4 py-3 text-right font-bold'>
-																{item.currentStock} <span className='text-[10px] text-gray-400 font-normal'>{item.unit}</span>
-															</td>
-															<td className='px-4 py-3 text-center'>
-																{isOut ? (
-																	<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 uppercase'>Out</span>
-																) : isLow ? (
-																	<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 uppercase'>Low</span>
-																) : (
-																	<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 uppercase'>OK</span>
-																)}
-															</td>
-														</tr>
-													);
-												})}
-											</tbody>
-										</table>
-									</div>
-								)}
+								<AnimatePresence initial={false}>
+									{!collapsed.ingredients && (
+										<motion.div
+											key='ingredients-content'
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={{ duration: 0.25, ease: "easeInOut" }}
+											className='overflow-hidden'
+										>
+											<div className='mt-4'>
+												{ingredientConsumption.length === 0 ? (
+													<div className='py-8 text-center text-sm text-gray-500 italic'>
+														No ingredients consumed in this period.
+													</div>
+												) : (
+													<div className='overflow-x-auto'>
+														<table className='w-full text-sm text-[var(--secondary)]'>
+															<thead className='bg-gray-50 border-b border-[var(--border)]'>
+																<tr>
+																	<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Ingredient</th>
+																	<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Category</th>
+																	<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Quantity Consumed</th>
+																	<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Current Stock</th>
+																	<th className='px-4 py-2 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Stock Status</th>
+																</tr>
+															</thead>
+															<tbody className='divide-y divide-[var(--border)]'>
+																{ingredientConsumption.map((item) => {
+																	const isOut = item.currentStock === 0;
+																	const isLow = item.currentStock <= item.lowStockThreshold;
+																	return (
+																		<tr key={item.ingredientId} className='hover:bg-gray-50/50 transition-colors'>
+																			<td className='px-4 py-3 font-semibold'>{item.ingredientName}</td>
+																			<td className='px-4 py-3 text-xs text-gray-500'>{item.categoryName}</td>
+																			<td className='px-4 py-3 text-right font-black text-[var(--secondary)]'>
+																				{item.quantityUsed} <span className='text-[10px] text-gray-400 font-normal'>{item.unit}</span>
+																			</td>
+																			<td className='px-4 py-3 text-right font-bold'>
+																				{item.currentStock} <span className='text-[10px] text-gray-400 font-normal'>{item.unit}</span>
+																			</td>
+																			<td className='px-4 py-3 text-center'>
+																				{isOut ? (
+																					<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 uppercase'>Out</span>
+																				) : isLow ? (
+																					<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 uppercase'>Low</span>
+																				) : (
+																					<span className='px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 uppercase'>OK</span>
+																				)}
+																			</td>
+																		</tr>
+																	);
+																})}
+															</tbody>
+														</table>
+													</div>
+												)}
+											</div>
+										</motion.div>
+									)}
+								</AnimatePresence>
 							</div>
 
 							{/* Product Sales Performance */}
 							<div className='bg-[var(--primary)] p-6 rounded-xl shadow-md border border-[var(--border)] mx-6'>
-								<div className='flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4'>
-									<div>
-										<h3 className='text-lg font-semibold text-[var(--secondary)]'>Product Performance</h3>
-										<p className='text-xs text-gray-400 mt-1'>
-											Best-selling products during this period ({viewPeriod === "day" ? "Today" : viewPeriod === "week" ? "7 Days" : "30 Days"})
-										</p>
-									</div>
+								<div className='flex flex-col md:flex-row md:items-center md:justify-between gap-4'>
+									<button
+										type='button'
+										onClick={() => toggleSection("products")}
+										aria-expanded={!collapsed.products}
+										className='flex items-start gap-2 text-left group'
+									>
+										<ChevronIcon className={`w-4 h-4 mt-1 shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-[var(--secondary)] ${collapsed.products ? "-rotate-90" : ""}`} />
+										<div>
+											<h3 className='text-lg font-semibold text-[var(--secondary)]'>Product Performance</h3>
+											<p className='text-xs text-gray-400 mt-1'>
+												Best-selling products during this period ({viewPeriod === "day" ? "Today" : viewPeriod === "week" ? "7 Days" : "30 Days"})
+											</p>
+										</div>
+									</button>
 									<div className='flex bg-gray-100 rounded-lg p-1 space-x-1 self-start'>
-										{([["quantity", "Units"], ["revenue", "Revenue"], ["profit", "Profit"]] as const).map(([key, label]) => (
+										{([["quantity", "Units"], ["revenue", "Revenue"]] as const).map(([key, label]) => (
 											<button
 												key={key}
 												onClick={() => setProductSort(key)}
@@ -553,86 +604,99 @@ export default function SalesScreen() {
 									</div>
 								</div>
 
-								{productStats.products.length === 0 ? (
-									<div className='py-8 text-center text-sm text-gray-500 italic'>
-										No products sold in this period.
-									</div>
-								) : (
-									<>
-										{/* Summary chips */}
-										<div className='grid grid-cols-2 md:grid-cols-3 gap-3 mb-6'>
-											<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)]'>
-												<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Top Product</p>
-												<p className='text-sm font-bold text-[var(--secondary)] mt-1 truncate'>{productStats.products[0]?.name ?? "—"}</p>
-												<p className='text-xs text-gray-500 mt-0.5'>{formatNumber(productStats.products[0]?.quantity ?? 0)} units · {formatCurrency(productStats.products[0]?.revenue ?? 0)}</p>
+								<AnimatePresence initial={false}>
+									{!collapsed.products && (
+										<motion.div
+											key='products-content'
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={{ duration: 0.25, ease: "easeInOut" }}
+											className='overflow-hidden'
+										>
+											<div className='mt-4'>
+												{productStats.products.length === 0 ? (
+													<div className='py-8 text-center text-sm text-gray-500 italic'>
+														No products sold in this period.
+													</div>
+												) : (
+													<>
+														{/* Summary chips */}
+														<div className='grid grid-cols-2 md:grid-cols-3 gap-3 mb-6'>
+															<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)]'>
+																<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Top Product</p>
+																<p className='text-sm font-bold text-[var(--secondary)] mt-1 truncate'>{productStats.products[0]?.name ?? "—"}</p>
+																<p className='text-xs text-gray-500 mt-0.5'>{formatNumber(productStats.products[0]?.quantity ?? 0)} units · {formatCurrency(productStats.products[0]?.revenue ?? 0)}</p>
+															</div>
+															<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)]'>
+																<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Products Sold</p>
+																<p className='text-2xl font-black text-[var(--secondary)] mt-1'>{formatNumber(productStats.products.length)}</p>
+																<p className='text-xs text-gray-500 mt-0.5'>unique items</p>
+															</div>
+															<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)] col-span-2 md:col-span-1'>
+																<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Units Sold</p>
+																<p className='text-2xl font-black text-[var(--secondary)] mt-1'>{formatNumber(productStats.totalUnits)}</p>
+																<p className='text-xs text-gray-500 mt-0.5'>total items sold</p>
+															</div>
+														</div>
+				
+														{/* Top products chart */}
+														<div className='h-72 mb-6'>
+															<ResponsiveContainer width='100%' height='100%'>
+																<BarChart data={topProducts} layout='vertical' margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+																	<CartesianGrid strokeDasharray='3 3' horizontal={false} stroke='#f0f0f0' />
+																	<XAxis type='number' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
+																	<YAxis type='category' dataKey='shortName' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} width={110} />
+																	<Tooltip
+																		cursor={{ fill: "rgba(0,0,0,0.03)" }}
+																		contentStyle={{ backgroundColor: "#fff", borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+																		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+																		formatter={formatProductTooltipValue as any}
+																	/>
+																	<Bar dataKey={productSort} radius={[0, 6, 6, 0]} animationDuration={800}>
+																		{topProducts.map((_, i) => (
+																			<Cell key={i} fill='var(--accent)' />
+																		))}
+																	</Bar>
+																</BarChart>
+															</ResponsiveContainer>
+														</div>
+				
+														{/* Ranked table */}
+														<div className='overflow-x-auto'>
+															<table className='w-full text-sm text-[var(--secondary)]'>
+																<thead className='bg-gray-50 border-b border-[var(--border)]'>
+																	<tr>
+																		<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>#</th>
+																		<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Product</th>
+																		<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Category</th>
+																		<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Units</th>
+																		<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Orders</th>
+																		<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Revenue</th>
+																		<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>% of Sales</th>
+																	</tr>
+																</thead>
+																<tbody className='divide-y divide-[var(--border)]'>
+																	{productStats.products.map((p, i) => (
+																		<tr key={p.menuItemId || p.name} className='hover:bg-gray-50/50 transition-colors'>
+																			<td className='px-4 py-3 font-black text-gray-400'>{i + 1}</td>
+																			<td className='px-4 py-3 font-semibold'>{p.name}</td>
+																			<td className='px-4 py-3 text-xs text-gray-500'>{p.categoryName}</td>
+																			<td className='px-4 py-3 text-right font-black'>{formatNumber(p.quantity)}</td>
+																			<td className='px-4 py-3 text-right text-gray-600'>{formatNumber(p.orderCount)}</td>
+																			<td className='px-4 py-3 text-right font-bold'>{formatCurrency(p.revenue)}</td>
+																			<td className='px-4 py-3 text-right text-xs text-gray-500'>{p.revenueShare.toFixed(1)}%</td>
+																		</tr>
+																	))}
+																</tbody>
+															</table>
+														</div>
+													</>
+												)}
 											</div>
-											<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)]'>
-												<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Products Sold</p>
-												<p className='text-2xl font-black text-[var(--secondary)] mt-1'>{formatNumber(productStats.products.length)}</p>
-												<p className='text-xs text-gray-500 mt-0.5'>unique items</p>
-											</div>
-											<div className='bg-gray-50 rounded-xl p-4 border border-[var(--border)] col-span-2 md:col-span-1'>
-												<p className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Units Sold</p>
-												<p className='text-2xl font-black text-[var(--secondary)] mt-1'>{formatNumber(productStats.totalUnits)}</p>
-												<p className='text-xs text-gray-500 mt-0.5'>total items sold</p>
-											</div>
-										</div>
-
-										{/* Top products chart */}
-										<div className='h-72 mb-6'>
-											<ResponsiveContainer width='100%' height='100%'>
-												<BarChart data={topProducts} layout='vertical' margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
-													<CartesianGrid strokeDasharray='3 3' horizontal={false} stroke='#f0f0f0' />
-													<XAxis type='number' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} />
-													<YAxis type='category' dataKey='shortName' stroke='#9ca3af' fontSize={10} tickLine={false} axisLine={false} width={110} />
-													<Tooltip
-														cursor={{ fill: "rgba(0,0,0,0.03)" }}
-														contentStyle={{ backgroundColor: "#fff", borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
-														// eslint-disable-next-line @typescript-eslint/no-explicit-any
-														formatter={formatProductTooltipValue as any}
-													/>
-													<Bar dataKey={productSort} radius={[0, 6, 6, 0]} animationDuration={800}>
-														{topProducts.map((_, i) => (
-															<Cell key={i} fill='var(--accent)' />
-														))}
-													</Bar>
-												</BarChart>
-											</ResponsiveContainer>
-										</div>
-
-										{/* Ranked table */}
-										<div className='overflow-x-auto'>
-											<table className='w-full text-sm text-[var(--secondary)]'>
-												<thead className='bg-gray-50 border-b border-[var(--border)]'>
-													<tr>
-														<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>#</th>
-														<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Product</th>
-														<th className='px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Category</th>
-														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Units</th>
-														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Orders</th>
-														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Revenue</th>
-														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>Profit</th>
-														<th className='px-4 py-2 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider'>% of Sales</th>
-													</tr>
-												</thead>
-												<tbody className='divide-y divide-[var(--border)]'>
-													{productStats.products.map((p, i) => (
-														<tr key={p.menuItemId || p.name} className='hover:bg-gray-50/50 transition-colors'>
-															<td className='px-4 py-3 font-black text-gray-400'>{i + 1}</td>
-															<td className='px-4 py-3 font-semibold'>{p.name}</td>
-															<td className='px-4 py-3 text-xs text-gray-500'>{p.categoryName}</td>
-															<td className='px-4 py-3 text-right font-black'>{formatNumber(p.quantity)}</td>
-															<td className='px-4 py-3 text-right text-gray-600'>{formatNumber(p.orderCount)}</td>
-															<td className='px-4 py-3 text-right font-bold'>{formatCurrency(p.revenue)}</td>
-															<td className='px-4 py-3 text-right font-bold text-green-600'>{formatCurrency(p.profit)}</td>
-															<td className='px-4 py-3 text-right text-xs text-gray-500'>{p.revenueShare.toFixed(1)}%</td>
-														</tr>
-													))}
-												</tbody>
-											</table>
-										</div>
-									</>
-								)}
+										</motion.div>
+									)}
+								</AnimatePresence>
 							</div>
 
 							{/* Orders Table */}
