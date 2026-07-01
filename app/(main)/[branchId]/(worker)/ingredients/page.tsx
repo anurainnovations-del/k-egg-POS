@@ -106,14 +106,31 @@ export default function IngredientsViewPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-3 flex-wrap">
+        <div className="space-y-3">
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search ingredients…"
-            className="flex-1 min-w-[200px] px-4 py-2 rounded-xl border border-[var(--border)] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
-          <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)}
-            className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
-            <option value="">All Categories</option>
-            {ingCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+            className="w-full px-4 py-2 rounded-xl border border-[var(--border)] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            <button
+              onClick={() => setFilterCat("")}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                !filterCat ? "bg-[var(--accent)] text-[var(--secondary)]" : "bg-white shadow-sm text-[var(--secondary)]/60 hover:bg-[var(--light-accent)]"
+              }`}>
+              All
+            </button>
+            {ingCategories.map((c) => {
+              const active = filterCat === c.id;
+              return (
+                <button key={c.id}
+                  onClick={() => setFilterCat(active ? "" : c.id)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border-l-4 ${
+                    active ? "bg-[var(--secondary)]/10 text-[var(--secondary)]" : "bg-white shadow-sm text-[var(--secondary)]/60 hover:bg-[var(--light-accent)]"
+                  }`}
+                  style={{ borderColor: c.color }}>
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Table */}

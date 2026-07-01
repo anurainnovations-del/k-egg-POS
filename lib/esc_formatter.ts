@@ -24,6 +24,8 @@ export interface ReceiptOrderData {
 	storeName?: string;
 	branchName?: string;
 	appliedDiscountCode?: string;
+	// Optional label printed prominently near the top, e.g. "CUSTOMER COPY" / "STORE COPY"
+	copyLabel?: string;
 }
 
 // Calculate the visual width of a string, taking into account full-width CJK characters
@@ -162,6 +164,15 @@ export async function formatReceiptESC(
 		lines.push(encoder.encode(`${order.branchName}\n`));
 	}
 	lines.push(encoder.encode("\n"));
+
+	// Copy label (e.g. CUSTOMER COPY / STORE COPY)
+	if (order.copyLabel) {
+		lines.push(esc([0x1b, 0x61, 0x01])); // Center
+		lines.push(esc([0x1b, 0x45, 0x01])); // Bold on
+		lines.push(encoder.encode(`*** ${order.copyLabel} ***\n`));
+		lines.push(esc([0x1b, 0x45, 0x00])); // Bold off
+		lines.push(encoder.encode("\n"));
+	}
 
 	// Order details
 	lines.push(esc([0x1b, 0x61, 0x00])); // Left align
